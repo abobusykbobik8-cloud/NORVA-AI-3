@@ -1,0 +1,8 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.cxx/
+# llama.cpp клонируется скриптом scripts/fetch_llama.sh
+third_party/
