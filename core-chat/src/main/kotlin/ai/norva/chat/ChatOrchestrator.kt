@@ -47,7 +47,7 @@ sealed interface ChatStatus {
 private enum class StopCause { THINKING_BUDGET, OVERHEATED }
 
 /** Служебное исключение: прерывает сбор потока движка (это отменяет и нативную генерацию). */
-private class StopStreaming(val cause: StopCause) : Exception()
+private class StopStreaming(val stopCause: StopCause) : Exception()
 
 private class Accumulator {
     val thinking = StringBuilder()
@@ -331,7 +331,7 @@ class ChatOrchestrator(
                 }
             }
         } catch (e: StopStreaming) {
-            return Segment.Stopped(e.cause, chunks)
+            return Segment.Stopped(e.stopCause, chunks)
         }
         val tail = filter.finish()
         acc.thinking.append(tail.thinking)
