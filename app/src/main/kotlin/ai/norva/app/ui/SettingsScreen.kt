@@ -36,7 +36,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
+fun SettingsScreen(container: AppContainer, onStudio: () -> Unit, onBack: () -> Unit) {
     val vm: SettingsViewModel = viewModel(factory = VmFactory(container))
     var text by remember { mutableStateOf(vm.systemPrompt) }
 
@@ -59,6 +59,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
             },
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp)) {
+                Button(onClick = onStudio) { Text("NØRVA Studio") }
                 Text("Личность ассистента (системный промпт)", style = MaterialTheme.typography.titleSmall)
                 OutlinedTextField(
                     value = text,

@@ -20,9 +20,10 @@ object LocalModelSelector {
         installedIds: Set<String>,
         catalog: List<ModelSpec> = DefaultCatalog.models,
         allowExperimental: Boolean = false,
+        preferSmaller: Boolean = false,
         budgetFor: (ModelSpec) -> Long = { budgetBytes },
     ): LocalSelection? {
-        val tiers = order.getValue(profile.mode)
+        val tiers = if (preferSmaller) listOf(ModelTier.LITE, ModelTier.SMALL, ModelTier.BALANCED) else order.getValue(profile.mode)
         for (tier in tiers) {
             for (spec in catalog) {
                 if (spec.tier != tier || spec.id !in installedIds) continue

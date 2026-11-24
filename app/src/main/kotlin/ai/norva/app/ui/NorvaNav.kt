@@ -61,7 +61,8 @@ fun NorvaNav(container: AppContainer) {
                 onModels = { nav.navigate("models") },
             )
         }
+        composable("studio") { StudioScreen(container) { nav.popBackStack() } }
         composable("models") { ModelsScreen(container = container, onBack = { nav.popBackStack() }) }
-        composable("settings") { SettingsScreen(container = container, onBack = { nav.popBackStack() }) }
+        composable("settings") { SettingsScreen(container = container, onStudio = { nav.navigate("studio") }, onBack = { nav.popBackStack() }) }
     }
 }

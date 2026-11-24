@@ -51,12 +51,20 @@ data class MessageEntity(
     val attachmentNote: String? = null,
 )
 
+@Entity(tableName = "sync_links", primaryKeys = ["kind", "localId"], indices = [Index(value = ["kind", "origin"], unique = true)])
+data class SyncLink(val kind: String, val localId: Long, val origin: String)
+
 @Dao
 interface ChatDao {
+    @Query("SELECT * FROM sync_links WHERE kind=:kind AND localId=:id")
+    suspend fun linkForId(kind: String, id: Long): SyncLink?
+    @Query("SELECT * FROM sync_links WHERE kind=:kind AND origin=:origin")
+    suspend fun linkForOrigin(kind: String, origin: String): SyncLink?
+    @Insert suspend fun insertLink(link: SyncLink)
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC")
     fun observeConversations(): Flow<List<ConversationEntity>>
 
-    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY id ASC")
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, id ASC")
     fun observeMessages(conversationId: Long): Flow<List<MessageEntity>>
 
     @Query("SELECT DISTINCT conversationId FROM messages WHERE attachmentKind IN ('PHOTO','IMAGE','VIDEO') AND attachmentPath IS NOT NULL")
@@ -65,7 +73,7 @@ interface ChatDao {
     @Query("SELECT * FROM conversations WHERE id = :id")
     suspend fun getConversation(id: Long): ConversationEntity?
 
-    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY id ASC")
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, id ASC")
     suspend fun getMessages(conversationId: Long): List<MessageEntity>
 
     @Insert
@@ -93,7 +101,7 @@ interface ChatDao {
     suspend fun failInterrupted(error: String)
 }
 
-@Database(entities = [ConversationEntity::class, MessageEntity::class], version = 2, exportSchema = false)
+@Database(entities = [ConversationEntity::class, MessageEntity::class, SyncLink::class], version = 3, exportSchema = false)
 abstract class NorvaDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
 }
@@ -104,5 +112,13 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         db.execSQL("ALTER TABLE messages ADD COLUMN attachmentKind TEXT")
         db.execSQL("ALTER TABLE messages ADD COLUMN attachmentPath TEXT")
         db.execSQL("ALTER TABLE messages ADD COLUMN attachmentNote TEXT")
+    }
+}
+
+
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_links (kind TEXT NOT NULL, localId INTEGER NOT NULL, origin TEXT NOT NULL, PRIMARY KEY(kind, localId))")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_sync_links_kind_origin ON sync_links(kind, origin)")
     }
 }

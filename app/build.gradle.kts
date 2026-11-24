@@ -17,9 +17,10 @@ android {
         manifestPlaceholders["appLabel"] = if (sideBySide) "NØRVA AI · Тест" else "@string/app_name"
         minSdk = 29
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.3-extreme-beta"
-        ndk { abiFilters += "arm64-v8a" }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        versionCode = 6
+        versionName = "1.4-beta"
+        ndk { abiFilters += if (providers.gradleProperty("norva.emulator").orNull == "true") "x86_64" else "arm64-v8a" }
     }
     buildFeatures { compose = true }
     compileOptions {
@@ -31,6 +32,11 @@ android {
 }
 
 dependencies {
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation(project(":core-chat"))
     implementation(project(":core-vision"))
     implementation(project(":engine-llama"))

@@ -91,10 +91,11 @@ class ChatViewModel(private val conversationId: Long, private val container: App
         _pending.value = null
     }
 
-    fun send(text: String) {
+    fun send(text: String): Boolean {
         val p = _pending.value
-        _pending.value = null
-        container.orchestrator.startSend(conversationId, text, _mode.value, p?.let { Attachment("PHOTO", it.path, it.note) })
+        val accepted = container.orchestrator.startSend(conversationId, text, _mode.value, p?.let { Attachment("PHOTO", it.path, it.note) })
+        if (accepted) _pending.value = null else _notice.value = "Движок занят другим запросом"
+        return accepted
     }
 
     fun neural(prompt: String, video: Boolean) {

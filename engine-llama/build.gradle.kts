@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         minSdk = 29
-        ndk { abiFilters += "arm64-v8a" }
+        ndk { abiFilters += if (providers.gradleProperty("norva.emulator").orNull == "true") "x86_64" else "arm64-v8a" }
         consumerProguardFiles("consumer-rules.pro")
         externalNativeBuild {
             cmake {

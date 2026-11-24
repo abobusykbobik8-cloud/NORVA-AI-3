@@ -45,6 +45,16 @@ import android.app.ActivityManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -76,6 +86,10 @@ private val Scheme = darkColorScheme(
     error = Color(0xFFFF6B6B),
 )
 
+private class GlassBackdrop(val layer: GraphicsLayer) {
+    var origin by mutableStateOf(Offset.Zero)
+}
+private val LocalBackdrop = staticCompositionLocalOf<GlassBackdrop?> { null }
 private val LocalAnimateGlass = staticCompositionLocalOf { true }
 
 /** Surface задаёт цвет содержимого: без него текст и иконки вне Material-компонентов рисовались чёрными на тёмном фоне. */
@@ -100,9 +114,16 @@ fun AppBackground(content: @Composable BoxScope.() -> Unit) {
     val transition = if (LocalAnimateGlass.current) rememberInfiniteTransition(label = "bg") else null
     val driftX = transition?.animateFloat(0f, 1f, infiniteRepeatable(tween(14000, easing = LinearEasing), RepeatMode.Reverse), label = "a")
     val driftY = transition?.animateFloat(1f, 0f, infiniteRepeatable(tween(19000, easing = LinearEasing), RepeatMode.Reverse), label = "b")
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
+    val layer = rememberGraphicsLayer()
+    val backdrop = remember(layer) { GlassBackdrop(layer) }
+    val blurEnabled = LocalAnimateGlass.current && android.os.Build.VERSION.SDK_INT >= 31
+    Box(Modifier.fillMaxSize()) {
+        val capture = if (blurEnabled) Modifier.onGloballyPositioned { backdrop.origin = it.positionInRoot() }
+            .drawWithContent {
+                layer.record { this@drawWithContent.drawContent() }
+                drawLayer(layer)
+            } else Modifier
+        Box(modifier = Modifier.fillMaxSize().then(capture)
             .background(NorvaNavy)
             .drawBehind {
                 val a = driftX?.value ?: 0.35f
@@ -114,14 +135,16 @@ fun AppBackground(content: @Composable BoxScope.() -> Unit) {
                 drawRect(Brush.radialGradient(listOf(NorvaYellow.copy(alpha = 0.14f), Color.Transparent), Offset(w * (0.8f - 0.3f * b), h * (0.3f + 0.2f * a)), w * 0.5f))
                 drawLine(NorvaRed.copy(alpha = 0.55f), Offset(w * 0.62f, 0f), Offset(w * 1.02f, h * 0.16f), strokeWidth = 5f)
                 drawLine(NorvaYellow.copy(alpha = 0.45f), Offset(w * 0.70f, 0f), Offset(w * 1.10f, h * 0.16f), strokeWidth = 2.5f)
-            },
-        content = content,
-    )
+            })
+        CompositionLocalProvider(LocalBackdrop provides if (blurEnabled) backdrop else null) {
+            content()
+        }
+    }
 }
 
 /**
  * Стеклоподобная панель: полупрозрачная заливка, блик сверху и красно-синяя светящаяся кромка.
- * Это не размытие содержимого под панелью: библиотека Haze требует более нового Kotlin, чем закреплён в проекте.
+ * На API 31+ подложка рисуется из слоя фона и размывается отдельно от содержимого.
  */
 @Composable
 fun GlassPanel(
@@ -145,16 +168,20 @@ fun GlassPanel(
         start = Offset(shift * 400f, 0f),
         end = Offset(shift * 400f + 700f, 500f),
     )
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(tint.copy(alpha = top), tint.copy(alpha = bottom))))
+    val backdrop = LocalBackdrop.current
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    Box(modifier.clip(shape).onGloballyPositioned { if (backdrop != null) origin = it.positionInRoot() }
+        .border(1.dp, rim, shape)) {
+        if (backdrop != null) Box(Modifier.matchParentSize().blur(12.dp).drawBehind {
+            val shiftToBackdrop = backdrop.origin - origin
+            translate(shiftToBackdrop.x, shiftToBackdrop.y) { drawLayer(backdrop.layer) }
+        })
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(tint.copy(alpha = top), tint.copy(alpha = bottom))))
             .drawBehind {
                 drawRect(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.18f), Color.Transparent), endY = size.height * 0.4f))
-            }
-            .border(1.dp, rim, shape),
-        content = content,
-    )
+            })
+        content()
+    }
 }
 
 /** Плавное сжатие при нажатии. */

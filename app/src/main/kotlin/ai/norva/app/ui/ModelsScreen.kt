@@ -55,6 +55,7 @@ fun ModelsScreen(container: AppContainer, onBack: () -> Unit) {
             kotlinx.coroutines.delay(5000)
         }
     }
+    var chosen by remember { mutableStateOf(container.settings.selectedModel) }
     val budget = MemoryBudget.budgetBytes(mem)
 
     AppBackground {
@@ -62,7 +63,7 @@ fun ModelsScreen(container: AppContainer, onBack: () -> Unit) {
             containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
-                    title = { Text("Модели") },
+                    title = { Text("Model Hub") },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
@@ -91,13 +92,23 @@ fun ModelsScreen(container: AppContainer, onBack: () -> Unit) {
                     }
                 }
                 item { Text("Для фото установите текстовую модель и её F16-проектор из той же серии (0.8B, 2B или 4B). Для чата на телефоне с 3–4 ГБ начните с 0.8B.", modifier = Modifier.padding(12.dp)) }
+                item { TextButton(onClick = { chosen = ""; container.settings.selectedModel = "" }) {
+                    Text(if (chosen.isEmpty()) "✓ Автовыбор модели" else "Вернуть автовыбор")
+                } }
                 items(vm.specs, key = { it.id }) { spec ->
+                    if (ai.norva.policy.DefaultCatalog.byId(spec.id) != null) {
+                        val bytes = MemoryBudget.estimateBytes(spec, 2048)
+                        Text("Оценка ОЗУ при 2048 токенах: ${gib(bytes)} ГиБ", style = MaterialTheme.typography.labelMedium)
+                        if (states[spec.id] == InstallState.Installed) TextButton(onClick = {
+                            chosen = spec.id; container.settings.selectedModel = spec.id
+                        }) { Text(if (chosen == spec.id) "✓ Выбрана для чата" else "Использовать в чате") }
+                    }
                     ModelCard(
                         spec = spec,
                         state = states[spec.id] ?: InstallState.NotInstalled,
                         onDownload = { vm.download(spec) },
                         onCancel = { vm.cancel(spec) },
-                        onDelete = { vm.delete(spec) },
+                        onDelete = { if (chosen == spec.id) { chosen = ""; container.settings.selectedModel = "" }; vm.delete(spec) },
                     )
                 }
                 item {

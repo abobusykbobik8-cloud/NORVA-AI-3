@@ -116,6 +116,9 @@ class ChatOrchestrator(
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val catalog: List<ModelSpec> = DefaultCatalog.models,
     private val persistIntervalMs: Long = 300L,
+    private val preferredModel: () -> String = { "" },
+    private val turbo: () -> Boolean = { false },
+    private val personalization: (String) -> String = { "" },
     private val remoteModel: () -> String? = { null },
     private val remoteChat: (suspend (List<ChatTurn>, ThinkingMode) -> String)? = null,
 ) {
@@ -127,9 +130,10 @@ class ChatOrchestrator(
 
     /** Запуск в прикладном scope: генерация продолжается, даже если пользователь ушёл с экрана чата. */
     @Synchronized
-    fun startSend(conversationId: Long, text: String, mode: ThinkingMode, attachment: Attachment? = null) {
-        if (running?.isActive == true || busy.isLocked) return
+    fun startSend(conversationId: Long, text: String, mode: ThinkingMode, attachment: Attachment? = null): Boolean {
+        if (running?.isActive == true || busy.isLocked) return false
         running = scope.launch { send(conversationId, text, mode, attachment) }
+        return true
     }
 
     @Synchronized
@@ -141,6 +145,16 @@ class ChatOrchestrator(
     /** Отмена текущей генерации; частичный ответ сохраняется со статусом CANCELLED. */
     fun stop() {
         running?.cancel()
+    }
+
+    suspend fun <T> withLocalEngine(block: suspend () -> T): T {
+        check(busy.tryLock()) { "Движок занят другим запросом" }
+        try {
+            engine.unload()
+            return block()
+        } finally {
+            try { withContext(NonCancellable) { engine.unload() } } finally { busy.unlock() }
+        }
     }
 
     suspend fun recoverInterrupted() = repo.failInterruptedMessages()
@@ -246,7 +260,8 @@ class ChatOrchestrator(
         if (!throttle.allowLocal) {
             return Prep.Unavailable("Телефон перегрет: локальный ИИ приостановлен. Подождите, пока устройство остынет.")
         }
-        val installed = store.installedIds(catalog)
+        val selected = preferredModel()
+        val installed = store.installedIds(catalog).filter { selected.isEmpty() || it == selected }.toSet()
         if (installed.isEmpty()) {
             return Prep.Unavailable("Нет установленных моделей. Установите модель на экране «Модели».")
         }
@@ -254,11 +269,13 @@ class ChatOrchestrator(
             DefaultCatalog.projectors[spec.id]?.let { store.isInstalled(it) } == true
         } else catalog
         if (vision && candidates.none { it.id in installed }) return Prep.Unavailable("Для фото скачайте в разделе «Модели» проектор той же модели (0.8B, 2B или 4B).")
-        val profile = ModeProfiles.of(mode).under(throttle)
+        val normal = ModeProfiles.of(mode).under(throttle)
+        val profile = if (turbo()) normal.copy(contextTokens = minOf(normal.contextTokens, maxOf(normal.minContextTokens, 2048)),
+            maxNewTokens = minOf(normal.maxNewTokens, 384), thinkingBudgetTokens = minOf(normal.thinkingBudgetTokens, 128)) else normal
         val budget = MemoryBudget.budgetBytes(mem)
         if (budget == 0L) return Prep.Unavailable("Android сообщает о нехватке свободной памяти. Закройте фоновые приложения.")
         val loaded = engine.loaded
-        val selection = LocalModelSelector.select(profile, budget, installed, candidates) { spec ->
+        val selection = LocalModelSelector.select(profile, budget, installed, candidates, preferSmaller = turbo() && selected.isEmpty()) { spec ->
             val projectorBytes = if (vision) DefaultCatalog.projectors.getValue(spec.id).fileSizeBytes + 224L * 1024 * 1024 else 0L
             val newBudget = budget - projectorBytes
             // Reuse exactly the existing context if there is headroom for the transient projector.
@@ -287,7 +304,7 @@ class ChatOrchestrator(
         val path = store.fileFor(spec).absolutePath
         try {
             val loaded = engine.loaded
-            val reuse = loaded != null && loaded.path == path && loaded.contextTokens >= prep.selection.contextTokens
+            val reuse = loaded != null && loaded.path == path && (if (turbo()) loaded.contextTokens == prep.selection.contextTokens else loaded.contextTokens >= prep.selection.contextTokens)
             if (reuse) {
                 engine.setThreads(prep.throttle.decodeThreads, prep.throttle.prefillThreads)
             } else {
@@ -431,7 +448,9 @@ class ChatOrchestrator(
 
     private fun buildTurns(history: List<StoredMessage>): List<ChatTurn> {
         val turns = ArrayList<ChatTurn>()
-        val sys = systemPrompt().trim()
+        val notes = if (remoteModel() == null) personalization(history.lastOrNull { it.role == Role.USER }?.content.orEmpty()) else ""
+        val sys = listOf(systemPrompt().trim(), notes.takeIf { it.isNotBlank() }?.let { "Сохранённые пользователем предпочтения:\n$it" }.orEmpty())
+            .filter { it.isNotBlank() }.joinToString("\n")
         if (sys.isNotEmpty()) turns.add(ChatTurn(Role.SYSTEM, sys))
         val lastPhoto = history.lastOrNull { it.role == Role.USER && it.attachmentKind == "PHOTO" && it.attachmentPath != null }
         for (m in history) {

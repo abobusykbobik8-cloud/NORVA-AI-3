@@ -6,6 +6,14 @@ import android.content.Context
 class SettingsStore(context: Context) {
     private val prefs = context.getSharedPreferences("norva_settings", Context.MODE_PRIVATE)
 
+    var selectedModel: String
+        get() = prefs.getString("selected_model", "").orEmpty()
+        set(value) { prefs.edit().putString("selected_model", value).apply() }
+
+    var turbo: Boolean
+        get() = prefs.getBoolean("turbo", false)
+        set(value) { prefs.edit().putBoolean("turbo", value).apply() }
+
     var systemPrompt: String
         get() = prefs.getString(KEY_PROMPT, null) ?: DEFAULT_SYSTEM_PROMPT
         set(value) {

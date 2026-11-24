@@ -130,6 +130,8 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onOpenChat: (Long)
         if (messages.isNotEmpty()) listState.scrollToItem(messages.lastIndex)
     }
 
+    var live by remember { mutableStateOf(false) }
+    if (live) LiveDialog(messages, vm::send, vm::stop) { live = false }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val chats: ChatListViewModel = viewModel(factory = VmFactory(container))
@@ -171,6 +173,7 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onOpenChat: (Long)
                                 Box {
                                     IconButton(onClick = { more = true }) { Icon(Icons.Default.MoreVert, "Действия") }
                                     DropdownMenu(more, { more = false }) {
+                                    DropdownMenuItem(text = { Text("NØRVA Live") }, enabled = modelReady && !busy && mediaBusy == null && pending == null, onClick = { more = false; live = true })
                                         DropdownMenuItem(text = { Text("Режим ответа") }, onClick = { more = false; showModes = !showModes })
                                         DropdownMenuItem(text = { Text("Модели") }, onClick = { more = false; onModels() })
                                         DropdownMenuItem(text = { Text("Настройки") }, onClick = { more = false; onSettings() })
@@ -267,7 +270,7 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onOpenChat: (Long)
                                 } })
                             val canSend = (input.isNotBlank() || pending != null) && modelReady && mediaBusy == null
                             IconButton(enabled = busy || canSend, onClick = {
-                                if (busy) vm.stop() else { vm.send(input); input = "" }
+                                if (busy) vm.stop() else if (vm.send(input)) input = ""
                             }) {
                                 Box(Modifier.size(36.dp).background(if (busy || canSend) NorvaBlue else MaterialTheme.colorScheme.surfaceVariant, CircleShape),
                                     contentAlignment = Alignment.Center) {
