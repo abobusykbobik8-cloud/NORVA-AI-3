@@ -17,8 +17,8 @@ android {
         manifestPlaceholders["appLabel"] = if (sideBySide) "NØRVA AI · Тест" else "@string/app_name"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3-dev"
+        versionCode = 5
+        versionName = "1.3-extreme-beta"
         ndk { abiFilters += "arm64-v8a" }
     }
     buildFeatures { compose = true }
