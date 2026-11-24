@@ -229,8 +229,13 @@ class ChatOrchestratorTest {
         assertFalse(env.engine.requests.single().prompt.contains("битый ответ"))
     }
 
-    @Test fun photoAnalysisIsPassedToTheModelButNotShownAsText() = runTest {
-        val env = Env(this)
+    @Test fun photoPixelsAndMatchingProjectorArePassedToEngine() = runTest {
+        val env = Env(this, availGib = 7.0)
+        val projector = DefaultCatalog.projectors.getValue("qwen3.5-4b-q4km")
+        val file = env.store.fileFor(projector)
+        file.parentFile.mkdirs()
+        file.writeText("projector")
+        File(file.path + ".sha256").writeText("hash")
         val c = env.newChat()
         env.engine.script(text("ok"), finished())
         env.orchestrator.send(c, "", ThinkingMode.NORMAL, Attachment("PHOTO", "/x.jpg", "Кадр 64×64, красный"))
@@ -240,8 +245,21 @@ class ChatOrchestratorTest {
         assertEquals(ChatOrchestrator.DEFAULT_PHOTO_QUESTION, user.content)
         assertFalse(user.content.contains("Кадр"))
         val prompt = env.engine.requests.single().prompt
-        assertTrue(prompt.contains("Кадр 64×64, красный"))
-        assertTrue(prompt.contains("не выдумывай"))
+        assertEquals("/x.jpg", env.engine.requests.single().photoPath)
+        assertEquals(file.absolutePath, env.engine.requests.single().projectorPath)
+        assertTrue(prompt.contains(ai.norva.inference.ChatMl.MEDIA_MARKER))
+    }
+
+    @Test fun repeatedAnswersStopAndAreExcludedFromFuturePrompts() = runTest {
+        val env = Env(this)
+        val c = env.newChat()
+        env.engine.script(*List(128) { text("очередной повтор. ") }.toTypedArray())
+        env.orchestrator.send(c, "первый", ThinkingMode.FAST)
+        assertEquals(MessageStatus.CANCELLED, env.repo.getMessages(c).last().status)
+        env.engine.script(text("другой"), finished())
+        env.orchestrator.send(c, "второй", ThinkingMode.NORMAL)
+        assertFalse("очередной повтор" in env.engine.requests.last().prompt)
+        assertFalse(RepetitionGuard.isLoop("1, 2, 3, " + "—".repeat(200)))
     }
 
     @Test fun filterExposesThinkingState() {

@@ -25,6 +25,8 @@ data class GenerationRequest(
     val presencePenalty: Float = 0f,
     /** -1 - случайный seed. */
     val seed: Int = -1,
+    val photoPath: String? = null,
+    val projectorPath: String? = null,
 )
 
 enum class StopReason { END_OF_TEXT, MAX_TOKENS, CANCELLED }

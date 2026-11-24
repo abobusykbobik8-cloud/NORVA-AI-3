@@ -28,9 +28,11 @@ class AppContainer(context: Context) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val db = Room.databaseBuilder(app, NorvaDatabase::class.java, "norva.db").addMigrations(MIGRATION_1_2).build()
 
+    val mediaConversationIds = db.chatDao().conversationsWithMedia()
     val repo: ChatRepository = RoomChatRepository(db.chatDao())
     val settings = SettingsStore(app)
-    val media = MediaStudio(app, repo, File(app.filesDir, "media"))
+    val cloud = ai.norva.app.cloud.CloudApi(app)
+    val media = MediaStudio(app, repo, File(app.filesDir, "media"), cloud)
     val modelStore = ModelStore(File(app.filesDir, "models"))
     val engine = LlamaEngine()
     val memory = AndroidMemoryInfoProvider(app)
@@ -53,6 +55,8 @@ class AppContainer(context: Context) {
         power = power,
         memory = memory,
         scope = appScope,
+        remoteModel = { cloud.config.value.takeIf { it.chatEnabled }?.model },
+        remoteChat = cloud::chat,
         systemPrompt = { settings.systemPrompt },
     )
 }

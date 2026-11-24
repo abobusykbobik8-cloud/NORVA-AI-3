@@ -16,8 +16,8 @@ fi
 [ -f "$LLAMA/include/llama.h" ] || { echo "нет $LLAMA/include/llama.h: это не checkout llama.cpp"; exit 2; }
 
 g++ -std=c++17 -Wall -Wextra -fsyntax-only \
-  -I"$LLAMA/include" -I"$LLAMA/ggml/include" \
+  -I"$LLAMA/tools/mtmd" -I"$LLAMA/include" -I"$LLAMA/ggml/include" \
   -I"$JH/include" -I"$JH/include/linux" \
   -I"$HERE/android-log-stub" -I"$CPP" \
-  "$CPP/norva_llama.cpp"
+  "$CPP/norva_llama.cpp" "$CPP/vision.cpp"
 echo "norva_llama.cpp компилируется против llama.cpp: $(git -C "$LLAMA" describe --tags --always 2>/dev/null || echo неизвестная версия)"

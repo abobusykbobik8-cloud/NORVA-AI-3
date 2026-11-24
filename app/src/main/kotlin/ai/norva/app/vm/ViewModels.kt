@@ -33,8 +33,8 @@ class ChatListViewModel(private val repo: ChatRepository) : ViewModel() {
         viewModelScope.launch { onCreated(repo.createConversation(ChatOrchestrator.DEFAULT_TITLE)) }
     }
 
-    fun delete(id: Long) {
-        viewModelScope.launch { repo.deleteConversation(id) }
+    fun delete(id: Long, onDeleted: (Long) -> Unit) {
+        viewModelScope.launch { repo.deleteConversation(id); onDeleted(id) }
     }
 }
 
@@ -52,7 +52,7 @@ class ChatViewModel(private val conversationId: Long, private val container: App
 
     val modelReady: StateFlow<Boolean> =
         container.installer.states
-            .map { states -> states.values.any { it == InstallState.Installed } }
+            .map { states -> DefaultCatalog.models.any { states[it.id] == InstallState.Installed } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     val status: StateFlow<ChatStatus> = container.orchestrator.status
@@ -97,6 +97,11 @@ class ChatViewModel(private val conversationId: Long, private val container: App
         container.orchestrator.startSend(conversationId, text, _mode.value, p?.let { Attachment("PHOTO", it.path, it.note) })
     }
 
+    fun neural(prompt: String, video: Boolean) {
+        val path = if (video) _pending.value?.path else null
+        container.appScope.launch { container.media.neural(conversationId, prompt, video, path) }
+    }
+
     fun generateImage(prompt: String) {
         container.appScope.launch { container.media.generateImage(conversationId, prompt) }
     }
@@ -108,7 +113,8 @@ class ChatViewModel(private val conversationId: Long, private val container: App
     fun save(m: StoredMessage) {
         val path = m.attachmentPath ?: return
         viewModelScope.launch {
-            val ok = container.media.saveToGallery(path, m.attachmentKind ?: "IMAGE")
+            val ok = try { container.media.saveToGallery(path, m.attachmentKind ?: "IMAGE") }
+            catch (e: SecurityException) { false }
             _notice.value = if (ok) "Сохранено в галерею, папка NORVA" else "Не удалось сохранить"
         }
     }
@@ -120,7 +126,7 @@ class ModelsViewModel(private val container: AppContainer) : ViewModel() {
     val states: StateFlow<Map<String, InstallState>> = container.installer.states
 
     /** Экспериментальные модели (9B) не показываем: на 12 ГБ они не помещаются в бюджет памяти. */
-    val specs: List<ModelSpec> = DefaultCatalog.models.filter { !it.experimental }
+    val specs: List<ModelSpec> = DefaultCatalog.downloads
 
     fun memory(): DeviceMemory = container.memory.current()
 

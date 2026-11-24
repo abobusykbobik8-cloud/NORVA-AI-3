@@ -1,5 +1,21 @@
 package ai.norva.app.ui
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.style.TextOverflow
 import ai.norva.app.AppContainer
 import ai.norva.app.vm.ChatListViewModel
 import ai.norva.app.vm.VmFactory
@@ -50,56 +66,79 @@ fun ChatListScreen(
     onOpen: (Long) -> Unit,
     onModels: () -> Unit,
     onSettings: () -> Unit,
+    onDeleted: (Long) -> Unit = {},
 ) {
     val vm: ChatListViewModel = viewModel(factory = VmFactory(container))
     val chats by vm.conversations.collectAsStateWithLifecycle()
     var toDelete by remember { mutableStateOf<Conversation?>(null) }
 
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var onlyMedia by rememberSaveable { mutableStateOf(false) }
+    val mediaIds by container.mediaConversationIds.collectAsStateWithLifecycle(emptyList())
+    val mediaSet = remember(mediaIds) { mediaIds.toSet() }
+    val status by container.orchestrator.status.collectAsStateWithLifecycle()
+    val mediaBusy by container.media.busy.collectAsStateWithLifecycle()
+    val activeChat = when (val current = status) {
+        is ai.norva.chat.ChatStatus.Generating -> current.conversationId
+        is ai.norva.chat.ChatStatus.LoadingModel -> current.conversationId
+        ai.norva.chat.ChatStatus.Idle -> null
+    }
+    val visible = remember(chats, query, onlyMedia, mediaSet) {
+        chats.filter { (!onlyMedia || it.id in mediaSet) && it.title.contains(query.trim(), ignoreCase = true) }
+    }
+
     AppBackground {
-        Scaffold(
-            containerColor = Color.Transparent,
-            topBar = {
-                TopAppBar(
-                    title = { Text("NØRVA AI", fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, letterSpacing = 3.sp) },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                    actions = {
-                        TextButton(onClick = onModels) { Text("Модели") }
-                        IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = "Настройки") }
-                    },
-                )
-            },
-            floatingActionButton = {
-                FloatingActionButton(onClick = { vm.create(onOpen) }) {
-                    Icon(Icons.Default.Add, contentDescription = "Новый чат")
-                }
-            },
-        ) { padding ->
-            if (chats.isEmpty()) {
-                Box(Modifier.fillMaxSize().padding(padding).padding(32.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        "Пока нет чатов. Нажмите «+», чтобы начать. Сначала установите модель на экране «Модели».",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(chats, key = { it.id }) { chat ->
-                        GlassPanel(Modifier.fillMaxWidth().clickable { onOpen(chat.id) }) {
-                            Row(
-                                Modifier.fillMaxWidth().padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(chat.title, modifier = Modifier.weight(1f), maxLines = 2)
-                                IconButton(onClick = { toDelete = chat }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Удалить чат")
-                                }
-                            }
-                        }
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = 20.dp)) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("NØRVA AI", modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, letterSpacing = 3.sp)
+                GlassPanel(shape = CircleShape) {
+                    IconButton(onClick = { searching = !searching; query = "" }) {
+                        Icon(if (searching) Icons.Default.Close else Icons.Default.Search, if (searching) "Закрыть поиск" else "Поиск чатов")
                     }
+                }
+            }
+            if (searching) {
+                OutlinedTextField(query, { query = it }, singleLine = true, shape = CircleShape,
+                    modifier = Modifier.fillMaxWidth(), placeholder = { Text("Поиск по истории") })
+            }
+            LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                item {
+                    TextButton(onClick = { onlyMedia = !onlyMedia }) {
+                        Icon(if (onlyMedia) Icons.Default.Close else Icons.Default.Star, null)
+                        Spacer(Modifier.width(14.dp))
+                        Text(if (onlyMedia) "Показать все чаты" else "Чаты с фото и видео", style = MaterialTheme.typography.titleMedium)
+                    }
+                    TextButton(onClick = onModels) {
+                        Icon(Icons.AutoMirrored.Filled.List, null)
+                        Spacer(Modifier.width(14.dp))
+                        Text("Модели", style = MaterialTheme.typography.titleMedium)
+                    }
+                    HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f))
+                }
+                items(visible, key = { it.id }) { chat ->
+                    Row(Modifier.fillMaxWidth().clickable { onOpen(chat.id) }.padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(chat.title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        IconButton(enabled = activeChat != chat.id && mediaBusy == null, onClick = { toDelete = chat }) { Icon(Icons.Default.Delete, "Удалить чат") }
+                    }
+                }
+                if (visible.isEmpty()) item {
+                    Text(if (query.isNotBlank()) "Чаты не найдены" else if (onlyMedia) "Пока нет чатов с вложениями" else "Здесь появится история чатов",
+                        Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                RacingButton(onClick = { vm.create(onOpen) }) {
+                    Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Edit, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Чат", fontWeight = FontWeight.Bold)
+                    }
+                }
+                GlassPanel(shape = CircleShape) {
+                    IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Настройки") }
                 }
             }
         }
@@ -113,7 +152,7 @@ fun ChatListScreen(
             text = { Text("«${target.title}» и вся его история будут удалены без возможности восстановления.") },
             confirmButton = {
                 TextButton(onClick = {
-                    vm.delete(target.id)
+                    vm.delete(target.id, onDeleted)
                     toDelete = null
                 }) { Text("Удалить") }
             },

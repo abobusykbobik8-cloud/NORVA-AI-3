@@ -21,7 +21,7 @@ class SettingsStore(context: Context) {
 
     companion object {
         const val DEFAULT_SYSTEM_PROMPT =
-            "Ты NØRVA - дружелюбный и точный ИИ-ассистент. Отвечай на языке пользователя, по делу и без лишней воды."
+            "Ты NØRVA - дружелюбный и точный ИИ-ассистент. Отвечай на языке пользователя, по делу. Если данных недостаточно, скажи об этом. Для фото описывай видимые детали, не додумывай нечитаемый текст."
         private const val KEY_PROMPT = "system_prompt"
         private const val KEY_MODE = "mode"
     }

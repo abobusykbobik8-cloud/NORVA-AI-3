@@ -30,6 +30,7 @@ class MediaStudio(
     private val context: Context,
     private val repo: ChatRepository,
     private val dir: File,
+    private val cloud: ai.norva.app.cloud.CloudApi,
 ) {
     private val _busy = MutableStateFlow<String?>(null)
     val busy: StateFlow<String?> = _busy.asStateFlow()
@@ -38,7 +39,7 @@ class MediaStudio(
 
     /** Читает снимок (камера или галерея), сохраняет уменьшенную копию и считает анализ. */
     suspend fun importPhoto(uri: Uri): Imported = withContext(Dispatchers.IO) {
-        _busy.value = "Анализ фото…"
+        _busy.value = "Подготовка фото…"
         try {
             val bitmap = ImageIo.decode(context, uri, 1280)
             val note = ImageAnalyzer.describeRu(ImageAnalyzer.analyze(ImageIo.toRgb(bitmap)))
@@ -77,6 +78,12 @@ class MediaStudio(
             }
         }
 
+    suspend fun neural(id: Long, prompt: String, video: Boolean, photo: String?) =
+        produce(id, prompt, if (video) "VIDEO" else "IMAGE", if (video) "mp4" else "png",
+            if (video) "Видео · Wan" else "Изображение · FLUX", if (video) "Видео Wan" else "Изображение FLUX") { file ->
+            cloud.generate(video, prompt, photo, file) { _busy.value = it }
+        }
+
     private suspend fun produce(
         conversationId: Long,
         prompt: String,
@@ -97,7 +104,7 @@ class MediaStudio(
         )
         msg = msg.copy(id = repo.addMessage(msg))
         dir.mkdirs()
-        val file = File(dir, "${kind.lowercase()}_$now.$ext")
+        val file = File(dir, "${kind.lowercase()}_${msg.id}.$ext")
         _busy.value = "$label…"
         var result = msg.copy(status = MessageStatus.FAILED, errorMessage = "Не удалось создать")
         try {
@@ -110,6 +117,7 @@ class MediaStudio(
             result = msg.copy(status = MessageStatus.FAILED, errorMessage = e.message ?: "Не удалось создать")
         } finally {
             withContext(NonCancellable) {
+                if (result.status != MessageStatus.COMPLETE) file.delete()
                 repo.updateMessage(result)
                 _busy.value = null
             }
@@ -134,11 +142,23 @@ class MediaStudio(
                 (if (video) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES) + "/NORVA",
             )
         }
+        values.put(MediaStore.MediaColumns.IS_PENDING, 1)
         val collection = if (video) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        val uri = context.contentResolver.insert(collection, values) ?: return@withContext false
-        val out = context.contentResolver.openOutputStream(uri) ?: return@withContext false
-        out.use { stream -> src.inputStream().use { it.copyTo(stream) } }
-        true
+        val resolver = context.contentResolver
+        val uri = resolver.insert(collection, values) ?: return@withContext false
+        var complete = false
+        try {
+            val out = resolver.openOutputStream(uri) ?: return@withContext false
+            out.use { stream -> src.inputStream().use { it.copyTo(stream) } }
+            values.clear()
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            complete = resolver.update(uri, values, null, null) == 1
+            complete
+        } catch (e: java.io.IOException) {
+            false
+        } finally {
+            if (!complete) resolver.delete(uri, null, null)
+        }
     }
 
     companion object {

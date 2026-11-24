@@ -2,7 +2,7 @@ package ai.norva.policy
 
 enum class ThinkingMode { FAST, NORMAL, DEEP }
 
-enum class ModelTier { SMALL, BALANCED, STRONG }
+enum class ModelTier { LITE, SMALL, BALANCED, STRONG }
 
 /**
  * Параметры, которые режим реально меняет в движке и в сборке промпта.
@@ -51,4 +51,12 @@ object ModeProfiles {
             memoryTopK = 8, selfCheckPass = true, preferCloudWhenAvailable = true,
         )
     }
+}
+
+/** Qwen3.5 model-card presets for general text and visual language tasks. */
+fun GenerationProfile.qwenSampling(reasoning: Boolean, vision: Boolean, tier: ModelTier): GenerationProfile = when {
+    reasoning && vision -> copy(temperature = 0.6f, topP = 0.95f, presencePenalty = 0f)
+    reasoning -> copy(temperature = 1f, topP = 0.95f, presencePenalty = 1.5f)
+    vision || tier == ModelTier.BALANCED -> copy(temperature = 0.7f, topP = 0.8f, presencePenalty = 1.5f)
+    else -> copy(temperature = 1f, topP = 1f, presencePenalty = 2f)
 }

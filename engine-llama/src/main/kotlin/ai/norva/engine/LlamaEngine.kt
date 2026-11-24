@@ -14,7 +14,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.channelFlow
@@ -77,11 +77,11 @@ class LlamaEngine : InferenceEngine {
                     val (decode, prefill) = threads
                     LlamaNative.nativeSetThreads(h, decode, prefill)
                     val sink = TokenSink { bytes ->
-                        trySend(GenerationEvent.Text(String(bytes, Charsets.UTF_8))).isSuccess && this@channelFlow.isActive
+                        trySendBlocking(GenerationEvent.Text(String(bytes, Charsets.UTF_8))).isSuccess && this@channelFlow.isActive
                     }
                     LlamaNative.nativeGenerate(
                         h, request.prompt.toByteArray(Charsets.UTF_8), request.maxNewTokens, request.temperature,
-                        request.topP, request.topK, request.minP, request.repeatPenalty, request.presencePenalty, request.seed, sink, stats,
+                        request.topP, request.topK, request.minP, request.repeatPenalty, request.presencePenalty, request.seed, sink, stats, request.photoPath, request.projectorPath,
                     )
                 }
             } finally {
@@ -99,11 +99,12 @@ class LlamaEngine : InferenceEngine {
             when (rc) {
                 0, 1, 2 -> send(GenerationEvent.Finished(s))
                 -2 -> send(GenerationEvent.Failed(EngineError.PROMPT_TOO_LONG, "Запрос не помещается в контекст (${s.promptTokens} токенов)"))
+                -4 -> send(GenerationEvent.Failed(EngineError.INTERNAL, "Ошибка обработки снимка или проектора mtmd. Проверьте файлы модели."))
                 -3 -> send(GenerationEvent.Failed(EngineError.DECODE_FAILED, "Ошибка вычисления в движке"))
                 else -> send(GenerationEvent.Failed(EngineError.INTERNAL, "Внутренняя ошибка движка ($rc)"))
             }
         }
-    }.buffer(Channel.UNLIMITED)
+    }.buffer(64)
 
     override fun cancel() {
         val h = handle

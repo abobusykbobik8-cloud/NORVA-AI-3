@@ -38,6 +38,10 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalContext
+import android.app.ActivityManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -72,25 +76,37 @@ private val Scheme = darkColorScheme(
     error = Color(0xFFFF6B6B),
 )
 
+private val LocalAnimateGlass = staticCompositionLocalOf { true }
+
 /** Surface задаёт цвет содержимого: без него текст и иконки вне Material-компонентов рисовались чёрными на тёмном фоне. */
 @Composable
 fun NorvaTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = Scheme) {
-        Surface(color = Color.Transparent, contentColor = Scheme.onBackground, content = content)
+    val context = LocalContext.current
+    val animate = remember(context) {
+        val am = context.getSystemService(ActivityManager::class.java)
+        val memory = ActivityManager.MemoryInfo().also(am::getMemoryInfo)
+        !am.isLowRamDevice && memory.totalMem > 4L * 1024 * 1024 * 1024
+    }
+    CompositionLocalProvider(LocalAnimateGlass provides animate) {
+        MaterialTheme(colorScheme = Scheme) {
+            Surface(color = Color.Transparent, contentColor = Scheme.onBackground, content = content)
+        }
     }
 }
 
 /** Фон: медленно дрейфующие цветные пятна и две гоночные полосы. */
 @Composable
 fun AppBackground(content: @Composable BoxScope.() -> Unit) {
-    val t = rememberInfiniteTransition(label = "bg")
-    val a by t.animateFloat(0f, 1f, infiniteRepeatable(tween(14000, easing = LinearEasing), RepeatMode.Reverse), label = "a")
-    val b by t.animateFloat(1f, 0f, infiniteRepeatable(tween(19000, easing = LinearEasing), RepeatMode.Reverse), label = "b")
+    val transition = if (LocalAnimateGlass.current) rememberInfiniteTransition(label = "bg") else null
+    val driftX = transition?.animateFloat(0f, 1f, infiniteRepeatable(tween(14000, easing = LinearEasing), RepeatMode.Reverse), label = "a")
+    val driftY = transition?.animateFloat(1f, 0f, infiniteRepeatable(tween(19000, easing = LinearEasing), RepeatMode.Reverse), label = "b")
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(NorvaNavy)
             .drawBehind {
+                val a = driftX?.value ?: 0.35f
+                val b = driftY?.value ?: 0.65f
                 val w = size.width
                 val h = size.height
                 drawRect(Brush.radialGradient(listOf(NorvaBlue.copy(alpha = 0.55f), Color.Transparent), Offset(w * (0.1f + 0.5f * a), h * (0.1f + 0.25f * b)), w * 0.95f))
@@ -117,7 +133,7 @@ fun GlassPanel(
 ) {
     val top = if (tint == Color.White) 0.16f else 0.45f
     val bottom = if (tint == Color.White) 0.05f else 0.22f
-    val shift = if (sheen) {
+    val shift = if (sheen && LocalAnimateGlass.current) {
         val t = rememberInfiniteTransition(label = "sheen")
         val v by t.animateFloat(0f, 1f, infiniteRepeatable(tween(3200, easing = LinearEasing), RepeatMode.Reverse), label = "shift")
         v
@@ -185,7 +201,7 @@ fun ModeSelector(selected: Int, labels: List<String>, onSelect: (Int) -> Unit, m
             val seg = maxWidth / labels.size
             val x by animateDpAsState(seg * selected, spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow), label = "pill")
             Box(
-                Modifier.offset(x = x).width(seg).fillMaxHeight()
+                Modifier.offset { androidx.compose.ui.unit.IntOffset(x.roundToPx(), 0) }.width(seg).fillMaxHeight()
                     .clip(RoundedCornerShape(20.dp))
                     .background(Brush.horizontalGradient(listOf(NorvaRed, NorvaBlue))),
             )

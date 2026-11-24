@@ -1,6 +1,6 @@
 package ai.norva.policy
 
-data class DeviceMemory(val totalBytes: Long, val availBytes: Long)
+data class DeviceMemory(val totalBytes: Long, val availBytes: Long, val lowThreshold: Long = 0, val lowMemory: Boolean = false)
 
 /**
  * Бюджет памяти для нативного движка. Коэффициенты - стартовые значения для 12 ГБ,
@@ -16,9 +16,11 @@ object MemoryBudget {
     const val MIN_CONTEXT = 1024
 
     fun budgetBytes(mem: DeviceMemory): Long {
+        if (mem.lowMemory || mem.totalBytes <= 0) return 0
+        val available = mem.availBytes.coerceIn(0, mem.totalBytes)
         val hard = (mem.totalBytes * HARD_CAP_FRACTION).toLong()
-        val dynamic = (mem.availBytes * DYNAMIC_FRACTION).toLong()
-        return minOf(hard, dynamic)
+        val dynamic = (available * DYNAMIC_FRACTION).toLong()
+        return minOf(hard, dynamic, (available - mem.lowThreshold.coerceAtLeast(0)).coerceAtLeast(0))
     }
 
     fun kvBytesPerToken(spec: ModelSpec, kvQ8: Boolean = true): Long =

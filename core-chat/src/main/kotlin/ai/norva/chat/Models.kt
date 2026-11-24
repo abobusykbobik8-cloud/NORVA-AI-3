@@ -25,7 +25,7 @@ data class StoredMessage(
     /** PHOTO (снимок пользователя), IMAGE или VIDEO (созданы встроенным генератором). */
     val attachmentKind: String? = null,
     val attachmentPath: String? = null,
-    /** Текстовый анализ снимка модулем NØRVA Vision: не показывается в чате, но передаётся чат-модели. */
+    /** Метаданные для совместимости с историей 1.2. Визуальный запрос использует файл вложения. */
     val attachmentNote: String? = null,
 )
 

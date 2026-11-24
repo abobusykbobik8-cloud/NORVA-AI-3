@@ -42,14 +42,15 @@ class JdkHttpFetcher(
             c.readTimeout = 30_000
             c.setRequestProperty("User-Agent", userAgent)
             if (rangeStart > 0) c.setRequestProperty("Range", "bytes=$rangeStart-")
-            val code = c.responseCode
+            val code = try { c.responseCode } catch (e: IOException) { c.disconnect(); throw e }
             if (code in 301..303 || code == 307 || code == 308) {
-                val loc = c.getHeaderField("Location") ?: throw IOException("Редирект без Location")
+                val loc = c.getHeaderField("Location")
                 c.disconnect()
+                if (loc == null) throw IOException("Редирект без Location")
                 current = URL(URL(current), loc).toString()
                 return@repeat
             }
-            val stream = if (code in 200..299) c.inputStream else (c.errorStream ?: InputStream.nullInputStream())
+            val stream = if (code in 200..299) c.inputStream else (c.errorStream ?: java.io.ByteArrayInputStream(ByteArray(0)))
             return HttpResult(code, c.contentLengthLong, stream) { c.disconnect() }
         }
         throw IOException("Слишком много перенаправлений")

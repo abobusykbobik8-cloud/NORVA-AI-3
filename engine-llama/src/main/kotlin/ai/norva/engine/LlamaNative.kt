@@ -15,7 +15,7 @@ object LlamaNative {
     external fun nativeSetThreads(handle: Long, nThreads: Int, nThreadsBatch: Int)
     external fun nativeGenerate(
         handle: Long, prompt: ByteArray, maxTokens: Int, temperature: Float, topP: Float, topK: Int,
-        minP: Float, repeatPenalty: Float, presencePenalty: Float, seed: Int, sink: TokenSink, stats: LongArray,
+        minP: Float, repeatPenalty: Float, presencePenalty: Float, seed: Int, sink: TokenSink, stats: LongArray, photo: String?, projector: String?,
     ): Int
     external fun nativeCancel(handle: Long)
     external fun nativeUnload(handle: Long)

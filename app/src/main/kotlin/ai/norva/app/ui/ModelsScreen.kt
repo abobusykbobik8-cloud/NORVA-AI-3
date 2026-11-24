@@ -31,6 +31,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -45,7 +48,13 @@ private fun gib(bytes: Long) = "%.1f".format(bytes / MemoryBudget.GIB.toDouble()
 fun ModelsScreen(container: AppContainer, onBack: () -> Unit) {
     val vm: ModelsViewModel = viewModel(factory = VmFactory(container))
     val states by vm.states.collectAsStateWithLifecycle()
-    val mem = remember { vm.memory() }
+    var mem by remember(vm) { mutableStateOf(vm.memory()) }
+    LaunchedEffect(vm) {
+        while (true) {
+            mem = vm.memory()
+            kotlinx.coroutines.delay(5000)
+        }
+    }
     val budget = MemoryBudget.budgetBytes(mem)
 
     AppBackground {
@@ -74,13 +83,14 @@ fun ModelsScreen(container: AppContainer, onBack: () -> Unit) {
                             Text("Память устройства", style = MaterialTheme.typography.titleSmall)
                             Text(
                                 "Всего ${gib(mem.totalBytes)} ГиБ, свободно ${gib(mem.availBytes)} ГиБ. " +
-                                    "Бюджет для ИИ сейчас ${gib(budget)} ГиБ (на момент открытия экрана).",
+                                    "Бюджет для ИИ сейчас ${gib(budget)} ГиБ.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
                 }
+                item { Text("Для фото установите текстовую модель и её F16-проектор из той же серии (0.8B, 2B или 4B). Для чата на телефоне с 3–4 ГБ начните с 0.8B.", modifier = Modifier.padding(12.dp)) }
                 items(vm.specs, key = { it.id }) { spec ->
                     ModelCard(
                         spec = spec,

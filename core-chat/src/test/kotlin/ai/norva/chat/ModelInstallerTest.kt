@@ -6,7 +6,13 @@ import ai.norva.inference.HubException
 import ai.norva.inference.ModelStore
 import ai.norva.inference.RemoteFile
 import ai.norva.policy.DefaultCatalog
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -38,6 +44,38 @@ class ModelInstallerTest {
             advanceUntilIdle()
             assertEquals(InstallState.Installed, installer.states.value[spec.id])
             assertEquals(spec.hubRepo to spec.fileName, resolvedWith)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun resumeWaitsForCancelledWriterToClose() = runTest {
+        val root = Files.createTempDirectory("resume").toFile()
+        try {
+            var open = 0
+            var peak = 0
+            var attempts = 0
+            val installer = ModelInstaller(ModelStore(root), this, { _, _ -> remote() }, { _, dest ->
+                flow {
+                    attempts++
+                    open++
+                    peak = maxOf(peak, open)
+                    try {
+                        if (attempts == 1) awaitCancellation()
+                        emit(DownloadEvent.Done(dest))
+                    } finally {
+                        withContext(NonCancellable) { delay(250); open-- }
+                    }
+                }
+            }, io = StandardTestDispatcher(testScheduler))
+            installer.start(spec)
+            runCurrent()
+            installer.cancel(spec)
+            installer.start(spec)
+            advanceUntilIdle()
+            assertEquals(2, attempts)
+            assertEquals(1, peak)
+            assertEquals(InstallState.Installed, installer.states.value[spec.id])
         } finally {
             root.deleteRecursively()
         }

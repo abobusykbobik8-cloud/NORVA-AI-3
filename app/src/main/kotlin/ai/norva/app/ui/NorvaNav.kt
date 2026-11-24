@@ -7,6 +7,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.flow.first
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -16,6 +22,10 @@ import androidx.navigation.navArgument
 @Composable
 fun NorvaNav(container: AppContainer) {
     val nav = rememberNavController()
+    var initialChatOpened by rememberSaveable { mutableStateOf(false) }
+    fun openChat(id: Long) {
+        nav.navigate("chat/$id") { popUpTo("chats"); launchSingleTop = true }
+    }
     NavHost(
         navController = nav,
         startDestination = "chats",
@@ -25,9 +35,17 @@ fun NorvaNav(container: AppContainer) {
         popExitTransition = { slideOutHorizontally(tween(320)) { it / 5 } + fadeOut(tween(200)) },
     ) {
         composable("chats") {
+            LaunchedEffect(Unit) {
+                if (!initialChatOpened) {
+                    val id = container.repo.observeConversations().first().firstOrNull()?.id
+                        ?: container.repo.createConversation(ai.norva.chat.ChatOrchestrator.DEFAULT_TITLE)
+                    initialChatOpened = true
+                    openChat(id)
+                }
+            }
             ChatListScreen(
                 container = container,
-                onOpen = { id -> nav.navigate("chat/$id") },
+                onOpen = ::openChat,
                 onModels = { nav.navigate("models") },
                 onSettings = { nav.navigate("settings") },
             )
@@ -37,7 +55,9 @@ fun NorvaNav(container: AppContainer) {
             ChatScreen(
                 container = container,
                 conversationId = id,
-                onBack = { nav.popBackStack() },
+                onOpenChat = ::openChat,
+                onChatDeleted = { nav.popBackStack("chats", false) },
+                onSettings = { nav.navigate("settings") },
                 onModels = { nav.navigate("models") },
             )
         }

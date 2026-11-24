@@ -19,7 +19,7 @@ struct llama_context_params {
     ggml_type type_k, type_v; llama_flash_attn_type flash_attn_type;
 };
 struct llama_sampler_chain_params { bool no_perf; };
-struct llama_batch { int32_t n_tokens; llama_token* token; };
+struct llama_batch { int32_t* pos; int32_t n_tokens; llama_token* token; };
 typedef void (*ggml_log_callback)(ggml_log_level, const char*, void*);
 void llama_log_set(ggml_log_callback, void*);
 void llama_backend_init();
@@ -54,3 +54,5 @@ llama_sampler* llama_sampler_init_dist(uint32_t);
 llama_token llama_sampler_sample(llama_sampler*, llama_context*, int32_t);
 void llama_sampler_free(llama_sampler*);
 const char* llama_print_system_info();
+
+void llama_set_abort_callback(llama_context*, bool (*callback)(void*), void*);

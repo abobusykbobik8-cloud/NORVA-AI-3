@@ -96,6 +96,7 @@ class ModelDownloader(
                     currentCoroutineContext().ensureActive()
                     val n = resp.body.read(buf)
                     if (n < 0) break
+                    if (n > file.sizeBytes - done) throw IOException("Сервер превысил заявленный размер файла")
                     out.write(buf, 0, n)
                     done += n
                     val now = System.nanoTime()
@@ -114,11 +115,12 @@ class ModelDownloader(
         }
     }
 
-    private fun sha256Hex(f: File): String {
+    private suspend fun sha256Hex(f: File): String {
         val md = MessageDigest.getInstance("SHA-256")
         f.inputStream().use { ins ->
             val buf = ByteArray(1 shl 20)
             while (true) {
+                currentCoroutineContext().ensureActive()
                 val n = ins.read(buf)
                 if (n < 0) break
                 md.update(buf, 0, n)

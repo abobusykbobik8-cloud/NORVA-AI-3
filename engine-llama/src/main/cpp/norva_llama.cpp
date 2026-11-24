@@ -15,6 +15,7 @@
 
 #include "llama.h"
 #include "utf8_stream.h"
+#include "vision.h"
 
 #define TAG "NorvaLlama"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -36,6 +37,7 @@ struct Engine {
     llama_context* ctx = nullptr;
     const llama_vocab* vocab = nullptr;
     int nCtx = 0;
+    int threads = 4;
     int nBatch = 512;
     std::atomic<bool> cancel{false};
 };
@@ -132,6 +134,7 @@ JNIEXPORT jlong JNICALL Java_ai_norva_engine_LlamaNative_nativeLoad(
     static std::once_flag once;
     std::call_once(once, [] {
         llama_log_set(llamaLog, nullptr);
+        configureVisionLogging();
         llama_backend_init();
     });
 
@@ -154,8 +157,8 @@ JNIEXPORT jlong JNICALL Java_ai_norva_engine_LlamaNative_nativeLoad(
     auto makeCtx = [&](bool quantKv) -> llama_context* {
         llama_context_params cp = llama_context_default_params();
         cp.n_ctx = static_cast<uint32_t>(nCtx);
-        cp.n_batch = 512;
-        cp.n_ubatch = 256;  // меньше ubatch - меньше буфер вычислений в памяти
+        cp.n_batch = nCtx <= 2048 ? 128 : 512;
+        cp.n_ubatch = nCtx <= 2048 ? 64 : 256;  // меньше ubatch - меньше буфер вычислений в памяти
         cp.n_threads = nThreads;
         cp.n_threads_batch = nThreadsBatch;
         if (quantKv) {
@@ -177,6 +180,7 @@ JNIEXPORT jlong JNICALL Java_ai_norva_engine_LlamaNative_nativeLoad(
     }
 
     auto* e = new Engine();
+    llama_set_abort_callback(ctx, [](void* p) { return static_cast<Engine*>(p)->cancel.load(); }, e);
     e->model = model;
     e->ctx = ctx;
     e->vocab = llama_model_get_vocab(model);
@@ -192,7 +196,7 @@ JNIEXPORT jlong JNICALL Java_ai_norva_engine_LlamaNative_nativeLoad(
 JNIEXPORT void JNICALL Java_ai_norva_engine_LlamaNative_nativeSetThreads(
     JNIEnv*, jobject, jlong handle, jint nThreads, jint nThreadsBatch) {
     auto* e = reinterpret_cast<Engine*>(handle);
-    if (e && e->ctx) llama_set_n_threads(e->ctx, nThreads, nThreadsBatch);
+    if (e && e->ctx) { e->threads = nThreadsBatch; llama_set_n_threads(e->ctx, nThreads, nThreadsBatch); }
 }
 
 JNIEXPORT void JNICALL Java_ai_norva_engine_LlamaNative_nativeCancel(JNIEnv*, jobject, jlong handle) {
@@ -220,7 +224,7 @@ JNIEXPORT jstring JNICALL Java_ai_norva_engine_LlamaNative_nativeSystemInfo(JNIE
 JNIEXPORT jint JNICALL Java_ai_norva_engine_LlamaNative_nativeGenerate(
     JNIEnv* env, jobject, jlong handle, jbyteArray jprompt, jint maxTokens, jfloat temp, jfloat topP,
     jint topK, jfloat minP, jfloat repeatPenalty, jfloat presencePenalty, jint seed, jobject sink,
-    jlongArray jstats) {
+    jlongArray jstats, jstring jphoto, jstring jprojector) {
     auto* e = reinterpret_cast<Engine*>(handle);
     if (!e || !e->ctx) return RC_INTERNAL;
     e->cancel.store(false);
@@ -233,6 +237,7 @@ JNIEXPORT jint JNICALL Java_ai_norva_engine_LlamaNative_nativeGenerate(
 
     // Промпт приходит байтами UTF-8: NewStringUTF/GetStringUTFChars работают с modified UTF-8 и ломают эмодзи.
     jbyte* pb = env->GetByteArrayElements(jprompt, nullptr);
+    if (!pb) return RC_INTERNAL;
     const jsize plen = env->GetArrayLength(jprompt);
     const std::string prompt(reinterpret_cast<const char*>(pb), static_cast<size_t>(plen));
     env->ReleaseByteArrayElements(jprompt, pb, JNI_ABORT);
@@ -257,35 +262,52 @@ JNIEXPORT jint JNICALL Java_ai_norva_engine_LlamaNative_nativeGenerate(
 
     llama_memory_clear(llama_get_memory(e->ctx), true);  // без повторного использования KV-префикса
 
-    const int32_t needed = -llama_tokenize(e->vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
-                                           nullptr, 0, true, true);
-    if (needed <= 0) return RC_INTERNAL;
-    std::vector<llama_token> toks(static_cast<size_t>(needed));
-    if (llama_tokenize(e->vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()), toks.data(),
-                       static_cast<int32_t>(toks.size()), true, true) < 0) {
-        return RC_INTERNAL;
-    }
-    const int nPrompt = static_cast<int>(toks.size());
-    if (nPrompt + 8 > e->nCtx) {
-        setStats(nPrompt, 0, 0, 0);
-        return RC_PROMPT_TOO_LONG;
+    int nPrompt = 0;
+    int nextPosition = 0;
+    const auto tPrefill = Clock::now();
+    if (jphoto) {
+        if (!jprojector) return -4;
+        auto path = [&](jstring value) {
+            const char* bytes = env->GetStringUTFChars(value, nullptr);
+            if (!bytes) return std::string();
+            std::string result(bytes);
+            env->ReleaseStringUTFChars(value, bytes);
+            return result;
+        };
+        int rc = prefillPhoto(e->model, e->ctx, prompt, path(jphoto), path(jprojector),
+                              e->threads, e->cancel, nPrompt, nextPosition);
+        if (e->cancel.load()) rc = RC_CANCELLED;
+        if (rc != 0) { setStats(nPrompt, 0, msSince(tPrefill), 0); return rc; }
+    } else {
+        const int32_t needed = -llama_tokenize(e->vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
+                                               nullptr, 0, true, true);
+        if (needed <= 0) return RC_INTERNAL;
+        std::vector<llama_token> toks(static_cast<size_t>(needed));
+        if (llama_tokenize(e->vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()), toks.data(),
+                           static_cast<int32_t>(toks.size()), true, true) < 0) {
+            return RC_INTERNAL;
+        }
+        nPrompt = static_cast<int>(toks.size());
+        if (nPrompt + 8 > e->nCtx) {
+            setStats(nPrompt, 0, 0, 0);
+            return RC_PROMPT_TOO_LONG;
+        }
+
+        for (int i = 0; i < nPrompt; i += e->nBatch) {
+            if (e->cancel.load()) {
+                setStats(nPrompt, 0, msSince(tPrefill), 0);
+                return RC_CANCELLED;
+            }
+            const int n = std::min(e->nBatch, nPrompt - i);
+            llama_batch b = llama_batch_get_one(toks.data() + i, n);
+            if (llama_decode(e->ctx, b) != 0) {
+                LOGE("prefill decode failed at %d", i);
+                setStats(nPrompt, 0, msSince(tPrefill), 0);
+                return e->cancel.load() ? RC_CANCELLED : RC_DECODE;
+            }
+        }
     }
     const int budget = std::min<int>(maxTokens, e->nCtx - nPrompt);
-
-    const auto tPrefill = Clock::now();
-    for (int i = 0; i < nPrompt; i += e->nBatch) {
-        if (e->cancel.load()) {
-            setStats(nPrompt, 0, msSince(tPrefill), 0);
-            return RC_CANCELLED;
-        }
-        const int n = std::min(e->nBatch, nPrompt - i);
-        llama_batch b = llama_batch_get_one(toks.data() + i, n);
-        if (llama_decode(e->ctx, b) != 0) {
-            LOGE("prefill decode failed at %d", i);
-            setStats(nPrompt, 0, msSince(tPrefill), 0);
-            return RC_DECODE;
-        }
-    }
     const jlong promptMs = msSince(tPrefill);
 
     llama_sampler* smpl = makeSampler(e->vocab, temp, topP, topK, minP, repeatPenalty, presencePenalty, seed);
@@ -301,9 +323,11 @@ JNIEXPORT jint JNICALL Java_ai_norva_engine_LlamaNative_nativeGenerate(
         const std::string piece = pieceOf(e->vocab, tok);
         if (!emit(utf8.push(piece.data(), piece.size()))) { rc = RC_CANCELLED; break; }
         llama_batch b = llama_batch_get_one(&tok, 1);
+        int32_t pos[4] = {nextPosition, nextPosition, nextPosition, 0};
+        if (jphoto) { b.pos = pos; ++nextPosition; }
         if (llama_decode(e->ctx, b) != 0) {
             LOGE("decode failed at token %d", nGen);
-            rc = RC_DECODE;
+            rc = e->cancel.load() ? RC_CANCELLED : RC_DECODE;
             break;
         }
     }

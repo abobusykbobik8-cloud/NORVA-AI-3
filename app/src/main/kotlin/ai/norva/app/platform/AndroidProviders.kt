@@ -39,6 +39,6 @@ class AndroidMemoryInfoProvider(context: Context) : MemoryInfoProvider {
     override fun current(): DeviceMemory {
         val info = ActivityManager.MemoryInfo()
         activityManager.getMemoryInfo(info)
-        return DeviceMemory(totalBytes = info.totalMem, availBytes = info.availMem)
+        return DeviceMemory(totalBytes = info.totalMem, availBytes = info.availMem, lowThreshold = info.threshold, lowMemory = info.lowMemory)
     }
 }

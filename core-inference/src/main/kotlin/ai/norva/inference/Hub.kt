@@ -48,6 +48,7 @@ class HfHub(
         val lfs = entry.lfs ?: throw HubException("У файла нет LFS-хеша SHA-256")
         if (!sha256Regex.matches(lfs.oid)) throw HubException("Некорректный SHA-256 у $fileName")
         val size = if (lfs.size > 0) lfs.size else entry.size
+        if (size <= 0) throw HubException("Некорректный размер файла")
         return RemoteFile(repo, entry.path, size, lfs.oid.lowercase(), "$baseUrl/$repo/resolve/main/${entry.path}")
     }
 }

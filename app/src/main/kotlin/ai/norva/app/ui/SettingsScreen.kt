@@ -3,6 +3,9 @@ package ai.norva.app.ui
 import ai.norva.app.AppContainer
 import ai.norva.app.vm.SettingsViewModel
 import ai.norva.app.vm.VmFactory
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +40,9 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
     val vm: SettingsViewModel = viewModel(factory = VmFactory(container))
     var text by remember { mutableStateOf(vm.systemPrompt) }
 
+    var cfg by remember { mutableStateOf(container.cloud.config.value) }
+    var feedback by remember { mutableStateOf("") }
+
     AppBackground {
         Scaffold(
             containerColor = Color.Transparent,
@@ -52,7 +58,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
                 )
             },
         ) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp)) {
                 Text("Личность ассистента (системный промпт)", style = MaterialTheme.typography.titleSmall)
                 OutlinedTextField(
                     value = text,
@@ -67,6 +73,20 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
                         text = vm.systemPrompt
                     }) { Text("Сбросить") }
                 }
+                Text("Облачные провайдеры", style = MaterialTheme.typography.titleMedium)
+                Text("Локальный чат работает на устройстве. В облачном режиме история и прикреплённый снимок передаются выбранному API. Ключи действуют до закрытия процесса.")
+                TextButton(onClick = { cfg = cfg.copy(chatEnabled = !cfg.chatEnabled) }) {
+                    Text(if (cfg.chatEnabled) "Чат: облачный" else "Чат: локальный")
+                }
+                OutlinedTextField(cfg.base, { cfg = cfg.copy(base = it.trim(), chatKey = "") }, label = { Text("Адрес OpenAI-совместимого API") }, singleLine = true)
+                OutlinedTextField(cfg.model, { cfg = cfg.copy(model = it.trim()) }, label = { Text("Модель чата с поддержкой фото") }, singleLine = true)
+                OutlinedTextField(cfg.chatKey, { cfg = cfg.copy(chatKey = it.trim()) }, label = { Text("Ключ чата") }, singleLine = true, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password, autoCorrectEnabled = false), visualTransformation = PasswordVisualTransformation())
+                OutlinedTextField(cfg.mediaKey, { cfg = cfg.copy(mediaKey = it.trim()) }, label = { Text("Ключ fal.ai для FLUX и Wan") }, singleLine = true, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password, autoCorrectEnabled = false), visualTransformation = PasswordVisualTransformation())
+                Button(onClick = {
+                    feedback = try { container.cloud.configure(cfg); "Настройки API сохранены" }
+                    catch (e: Exception) { e.message ?: "Проверьте настройки" }
+                }) { Text("Применить настройки API") }
+                if (feedback.isNotEmpty()) Text(feedback)
             }
         }
     }

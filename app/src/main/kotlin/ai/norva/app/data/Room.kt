@@ -59,6 +59,9 @@ interface ChatDao {
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY id ASC")
     fun observeMessages(conversationId: Long): Flow<List<MessageEntity>>
 
+    @Query("SELECT DISTINCT conversationId FROM messages WHERE attachmentKind IN ('PHOTO','IMAGE','VIDEO') AND attachmentPath IS NOT NULL")
+    fun conversationsWithMedia(): Flow<List<Long>>
+
     @Query("SELECT * FROM conversations WHERE id = :id")
     suspend fun getConversation(id: Long): ConversationEntity?
 

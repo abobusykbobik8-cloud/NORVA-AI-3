@@ -17,7 +17,10 @@ object ImageIo {
         return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             val side = maxOf(info.size.width, info.size.height)
-            if (side > maxSide) decoder.setTargetSampleSize((side + maxSide - 1) / maxSide)
+            if (side > maxSide) decoder.setTargetSize(
+                (info.size.width.toLong() * maxSide / side).toInt().coerceAtLeast(1),
+                (info.size.height.toLong() * maxSide / side).toInt().coerceAtLeast(1),
+            )
         }
     }
 

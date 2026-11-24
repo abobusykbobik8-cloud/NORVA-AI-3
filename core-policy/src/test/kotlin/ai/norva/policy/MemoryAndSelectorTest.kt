@@ -36,6 +36,30 @@ class MemoryAndSelectorTest {
         assertEquals(4096, MemoryBudget.maxContext(m2, b, 4096))
     }
 
+    @Test fun lowRamUsesLiteAndRespectsAndroidThreshold() {
+        val lite = DefaultCatalog.byId("qwen3.5-0.8b-q4km")!!
+        for (totalGb in 3..4) {
+            val device = DeviceMemory(totalGb * GIB, 3 * GIB / 2, GIB / 3)
+            for (mode in ThinkingMode.entries) {
+                val s = LocalModelSelector.select(ModeProfiles.of(mode), MemoryBudget.budgetBytes(device), setOf(lite.id, m2.id))!!
+                assertEquals(lite.id, s.model.id)
+                assertTrue(s.contextTokens in 1024..2048)
+                assertEquals(false, s.thinking)
+            }
+            assertEquals(0L, MemoryBudget.budgetBytes(device.copy(lowMemory = true)))
+            assertEquals(0L, MemoryBudget.budgetBytes(device.copy(availBytes = GIB / 4)))
+        }
+    }
+
+    @Test fun samplingDependsOnActualReasoningAndPhoto() {
+        val deep = ModeProfiles.of(ThinkingMode.DEEP)
+        assertEquals(0f, deep.qwenSampling(true, true, ModelTier.LITE).presencePenalty)
+        assertEquals(1.5f, deep.qwenSampling(true, false, ModelTier.LITE).presencePenalty)
+        assertEquals(0.7f, deep.qwenSampling(false, true, ModelTier.LITE).temperature)
+        assertEquals(2f, deep.qwenSampling(false, false, ModelTier.LITE).presencePenalty)
+        assertEquals(0.7f, deep.qwenSampling(false, false, ModelTier.BALANCED).temperature)
+    }
+
     @Test fun estimateGrowsWithContext() {
         assertTrue(MemoryBudget.estimateBytes(m4, 8192) > MemoryBudget.estimateBytes(m4, 2048))
     }
@@ -58,7 +82,7 @@ class MemoryAndSelectorTest {
         val b = MemoryBudget.budgetBytes(mem(5))
         val deep = ModeProfiles.of(ThinkingMode.DEEP)
         assertEquals(true, LocalModelSelector.select(deep, b, setOf(m4.id))?.thinking)
-        assertEquals(false, LocalModelSelector.select(deep, b, setOf(m2.id))?.thinking)
+        assertEquals(true, LocalModelSelector.select(deep, b, setOf(m2.id))?.thinking)
     }
 
     @Test fun nothingInstalledMeansNoSelection() {

@@ -85,6 +85,15 @@ class DownloaderTest {
         assertContentEquals(payload, dest.readBytes())
     }
 
+    @Test fun serverCannotWritePastTheVerifiedSize() {
+        val dest = File(tmp, "m/m.gguf")
+        val advertisedSize = 32L
+        val events = runBlocking { ModelDownloader().download(remote().copy(sizeBytes = advertisedSize), dest).toList() }
+        assertEquals(DownloadError.IO, assertIs<DownloadEvent.Failed>(events.last()).error)
+        assertFalse(dest.exists())
+        assertTrue(File(dest.path + ".part").length() <= advertisedSize)
+    }
+
     @Test fun wrongChecksumDeletesEverything() {
         val dest = File(tmp, "m/m.gguf")
         val events = runBlocking { ModelDownloader().download(remote(sha256 = "0".repeat(64)), dest).toList() }

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -38,16 +39,23 @@ class ModelInstaller(
     private val scope: CoroutineScope,
     private val resolve: (repo: String, fileName: String) -> RemoteFile,
     private val download: (RemoteFile, File) -> Flow<DownloadEvent>,
-    private val catalog: List<ModelSpec> = DefaultCatalog.models,
+    private val catalog: List<ModelSpec> = DefaultCatalog.downloads,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val _states = MutableStateFlow(initialStates())
     val states: StateFlow<Map<String, InstallState>> = _states.asStateFlow()
     private val jobs = HashMap<String, Job>()
 
+    private val locks = catalog.associate { it.id to kotlinx.coroutines.sync.Mutex() }
+    private val deleting = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     fun start(spec: ModelSpec) {
-        if (jobs[spec.id]?.isActive == true) return
-        jobs[spec.id] = scope.launch { run(spec) }
+        if (jobs[spec.id]?.isActive == true || spec.id in deleting) return
+        val lock = locks.getValue(spec.id)
+        jobs[spec.id] = scope.launch {
+            lock.lock()
+            try { run(spec) } finally { lock.unlock() }
+        }
     }
 
     fun cancel(spec: ModelSpec) {
@@ -57,8 +65,18 @@ class ModelInstaller(
 
     fun delete(spec: ModelSpec) {
         jobs.remove(spec.id)?.cancel()
-        store.delete(spec)
-        set(spec.id, InstallState.NotInstalled)
+        if (!deleting.add(spec.id)) return
+        val lock = locks.getValue(spec.id)
+        fun remove() {
+            try {
+                val removed = store.delete(spec)
+                set(spec.id, if (removed) InstallState.NotInstalled else InstallState.Failed("Не удалось удалить файл"))
+            } finally {
+                deleting.remove(spec.id)
+                lock.unlock()
+            }
+        }
+        if (lock.tryLock()) remove() else scope.launch { lock.lock(); remove() }
     }
 
     private suspend fun run(spec: ModelSpec) {
@@ -66,6 +84,7 @@ class ModelInstaller(
         try {
             val remote = withContext(io) { resolve(spec.hubRepo, spec.fileName) }
             download(remote, store.fileFor(spec)).collect { ev ->
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 when (ev) {
                     is DownloadEvent.Progress ->
                         set(spec.id, InstallState.Downloading(ev.downloadedBytes, ev.totalBytes, ev.bytesPerSecond))

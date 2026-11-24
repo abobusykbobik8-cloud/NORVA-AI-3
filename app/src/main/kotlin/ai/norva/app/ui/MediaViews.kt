@@ -12,7 +12,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,8 +38,11 @@ private fun decodeSampled(path: String, maxSide: Int): Bitmap? {
 
 @Composable
 fun AttachmentImage(path: String, modifier: Modifier = Modifier) {
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, key1 = path) {
-        value = withContext(Dispatchers.IO) { decodeSampled(path, 900)?.asImageBitmap() }
+    var bitmap by remember(path) { mutableStateOf<ImageBitmap?>(null) }
+    var loading by remember(path) { mutableStateOf(true) }
+    LaunchedEffect(path) {
+        bitmap = withContext(Dispatchers.IO) { decodeSampled(path, 900)?.asImageBitmap() }
+        loading = false
     }
     val shape = RoundedCornerShape(16.dp)
     val loaded = bitmap
@@ -49,7 +55,7 @@ fun AttachmentImage(path: String, modifier: Modifier = Modifier) {
         )
     } else {
         Box(modifier.fillMaxWidth().height(160.dp).clip(shape).background(Color.White.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
-            TypingDots()
+            if (loading) TypingDots() else androidx.compose.material3.Text("Вложение недоступно")
         }
     }
 }

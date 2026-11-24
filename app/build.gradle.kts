@@ -7,14 +7,18 @@ plugins {
 
 android {
     namespace = "ai.norva.app"
+    ndkVersion = "27.2.12479018"
     compileSdk = 35
 
     defaultConfig {
         applicationId = "ai.norva.mobile"
+        val sideBySide = providers.gradleProperty("norva.previewInstall").orNull == "true"
+        if (sideBySide) applicationIdSuffix = ".preview"
+        manifestPlaceholders["appLabel"] = if (sideBySide) "NØRVA AI · Тест" else "@string/app_name"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2-beta"
+        versionCode = 4
+        versionName = "1.3-dev"
         ndk { abiFilters += "arm64-v8a" }
     }
     buildFeatures { compose = true }
@@ -23,7 +27,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    lint { abortOnError = false }
+    lint { abortOnError = true }
 }
 
 dependencies {

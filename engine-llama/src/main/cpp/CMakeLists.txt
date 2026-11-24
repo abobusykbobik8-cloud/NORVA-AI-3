@@ -20,16 +20,18 @@ set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 
-# Набор инструкций ARM. Если на устройстве случится SIGILL, понизить до armv8.2-a+dotprod (см. docs/ENGINE.md).
+# Portable arm64-v8a baseline. Device-specific builds can override NORVA_CPU_ARCH.
 if(NOT DEFINED NORVA_CPU_ARCH OR "${NORVA_CPU_ARCH}" STREQUAL "")
-    set(NORVA_CPU_ARCH "armv8.2-a+dotprod+fp16+i8mm")
+    set(NORVA_CPU_ARCH "armv8-a")
 endif()
 set(GGML_CPU_ARM_ARCH "${NORVA_CPU_ARCH}" CACHE STRING "" FORCE)
 
+set(LLAMA_BUILD_MTMD ON CACHE BOOL "" FORCE)
+set(MTMD_VIDEO OFF CACHE BOOL "" FORCE)
 add_subdirectory(${LLAMA_DIR} llama-build)
 
-add_library(norva_llama SHARED norva_llama.cpp)
+add_library(norva_llama SHARED norva_llama.cpp vision.cpp)
 target_include_directories(norva_llama PRIVATE ${LLAMA_DIR}/include ${LLAMA_DIR}/ggml/include)
-target_link_libraries(norva_llama PRIVATE llama log)
+target_link_libraries(norva_llama PRIVATE mtmd llama log)
 # Android 15+ с 16 КБ страницами памяти
 target_link_options(norva_llama PRIVATE -Wl,-z,max-page-size=16384)
