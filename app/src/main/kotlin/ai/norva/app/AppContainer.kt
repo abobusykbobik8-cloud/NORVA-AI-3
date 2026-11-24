@@ -1,6 +1,8 @@
 package ai.norva.app
 
+import ai.norva.app.data.MIGRATION_1_2
 import ai.norva.app.data.NorvaDatabase
+import ai.norva.app.media.MediaStudio
 import ai.norva.app.data.RoomChatRepository
 import ai.norva.app.platform.AndroidMemoryInfoProvider
 import ai.norva.app.platform.AndroidPowerStateProvider
@@ -24,10 +26,11 @@ class AppContainer(context: Context) {
     private val app = context.applicationContext
 
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val db = Room.databaseBuilder(app, NorvaDatabase::class.java, "norva.db").build()
+    private val db = Room.databaseBuilder(app, NorvaDatabase::class.java, "norva.db").addMigrations(MIGRATION_1_2).build()
 
     val repo: ChatRepository = RoomChatRepository(db.chatDao())
     val settings = SettingsStore(app)
+    val media = MediaStudio(app, repo, File(app.filesDir, "media"))
     val modelStore = ModelStore(File(app.filesDir, "models"))
     val engine = LlamaEngine()
     val memory = AndroidMemoryInfoProvider(app)

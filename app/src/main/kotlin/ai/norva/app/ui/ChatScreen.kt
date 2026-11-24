@@ -9,7 +9,19 @@ import ai.norva.chat.StoredMessage
 import ai.norva.inference.Role
 import ai.norva.policy.ThinkingMode
 import androidx.compose.foundation.clickable
+import ai.norva.app.media.ImageIo
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -68,6 +80,25 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onBack: () -> Unit
     var input by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     val busy = status !is ChatStatus.Idle
+    val pending by vm.pending.collectAsStateWithLifecycle()
+    val mediaBusy by vm.mediaBusy.collectAsStateWithLifecycle()
+    val notice by vm.notice.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var menuOpen by remember { mutableStateOf(false) }
+    var captureUri by remember { mutableStateOf<Uri?>(null) }
+    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val uri = captureUri
+        if (ok && uri != null) vm.importPhoto(uri)
+    }
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) vm.importPhoto(uri)
+    }
+    LaunchedEffect(notice) {
+        notice?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            vm.clearNotice()
+        }
+    }
 
     val last = messages.lastOrNull()
     LaunchedEffect(messages.size, last?.content?.length, last?.thinking?.length) {
@@ -90,8 +121,21 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onBack: () -> Unit
             },
             bottomBar = {
                 Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    statusLine(status)?.let {
+                    (mediaBusy ?: statusLine(status))?.let {
                         Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    pending?.let { p ->
+                        GlassPanel(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.width(64.dp)) { AttachmentImage(p.path) }
+                                Text(
+                                    "Фото прикреплено и проанализировано. Напишите вопрос или просто отправьте.",
+                                    modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                TextButton(onClick = { vm.clearPending() }) { Text("Убрать") }
+                            }
+                        }
                     }
                     ModeSelector(
                         selected = ThinkingMode.entries.indexOf(mode),
@@ -100,6 +144,51 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onBack: () -> Unit
                         modifier = Modifier.padding(vertical = 8.dp),
                     )
                     Row(verticalAlignment = Alignment.Bottom) {
+                        Box {
+                            IconButton(onClick = { menuOpen = true }) {
+                                Icon(Icons.Default.Add, contentDescription = "Добавить")
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Сделать фото") },
+                                    onClick = {
+                                        menuOpen = false
+                                        try {
+                                            val uri = ImageIo.newCaptureUri(context)
+                                            captureUri = uri
+                                            takePicture.launch(uri)
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Камера недоступна: ${e.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Выбрать из галереи") },
+                                    onClick = {
+                                        menuOpen = false
+                                        pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Создать картинку по тексту") },
+                                    enabled = input.isNotBlank(),
+                                    onClick = {
+                                        menuOpen = false
+                                        vm.generateImage(input)
+                                        input = ""
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Создать видео по тексту") },
+                                    enabled = input.isNotBlank(),
+                                    onClick = {
+                                        menuOpen = false
+                                        vm.generateVideo(input)
+                                        input = ""
+                                    },
+                                )
+                            }
+                        }
                         OutlinedTextField(
                             value = input,
                             onValueChange = { input = it },
@@ -118,7 +207,7 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onBack: () -> Unit
                                     vm.send(input)
                                     input = ""
                                 },
-                                enabled = input.isNotBlank() && modelReady,
+                                enabled = (input.isNotBlank() || pending != null) && modelReady,
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Отправить", tint = Color.White)
                             }
@@ -148,6 +237,7 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onBack: () -> Unit
                                 m = m,
                                 canRegenerate = !busy && m.id == last?.id && m.role == Role.ASSISTANT,
                                 onRegenerate = { vm.regenerate() },
+                                onSave = { vm.save(it) },
                             )
                         }
                     }
@@ -170,11 +260,15 @@ private fun statusLine(s: ChatStatus): String? = when (s) {
 }
 
 @Composable
-private fun MessageBubble(m: StoredMessage, canRegenerate: Boolean, onRegenerate: () -> Unit) {
+private fun MessageBubble(m: StoredMessage, canRegenerate: Boolean, onRegenerate: () -> Unit, onSave: (StoredMessage) -> Unit) {
     val isUser = m.role == Role.USER
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
         GlassPanel(Modifier.widthIn(max = 340.dp), tint = if (isUser) NorvaBlue else Color.White) {
             Column(Modifier.padding(14.dp).animateContentSize()) {
+                m.attachmentPath?.let { path ->
+                    if (m.attachmentKind == "VIDEO") AttachmentVideo(path) else AttachmentImage(path)
+                    Spacer(Modifier.height(8.dp))
+                }
                 if (m.thinking.isNotBlank()) {
                     ThinkingBlock(text = m.thinking, live = m.status == MessageStatus.STREAMING && m.content.isEmpty())
                 }
@@ -198,6 +292,7 @@ private fun MessageBubble(m: StoredMessage, canRegenerate: Boolean, onRegenerate
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
+        if (m.attachmentPath != null) TextButton(onClick = { onSave(m) }) { Text("Сохранить в галерею") }
         if (canRegenerate) TextButton(onClick = onRegenerate) { Text("Повторить") }
     }
 }

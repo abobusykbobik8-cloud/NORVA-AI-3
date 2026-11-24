@@ -10,6 +10,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "conversations")
@@ -44,6 +46,9 @@ data class MessageEntity(
     val tokensPerSecond: Double?,
     val errorMessage: String?,
     val createdAt: Long,
+    val attachmentKind: String? = null,
+    val attachmentPath: String? = null,
+    val attachmentNote: String? = null,
 )
 
 @Dao
@@ -85,7 +90,16 @@ interface ChatDao {
     suspend fun failInterrupted(error: String)
 }
 
-@Database(entities = [ConversationEntity::class, MessageEntity::class], version = 1, exportSchema = false)
+@Database(entities = [ConversationEntity::class, MessageEntity::class], version = 2, exportSchema = false)
 abstract class NorvaDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
+}
+
+/** Версия 2: вложения сообщений (фото, созданные картинки и видео). История чатов сохраняется. */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE messages ADD COLUMN attachmentKind TEXT")
+        db.execSQL("ALTER TABLE messages ADD COLUMN attachmentPath TEXT")
+        db.execSQL("ALTER TABLE messages ADD COLUMN attachmentNote TEXT")
+    }
 }

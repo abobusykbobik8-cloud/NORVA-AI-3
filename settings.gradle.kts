@@ -18,6 +18,7 @@ rootProject.name = "norva-ai-mobile"
 include(":core-policy")
 include(":core-inference")
 include(":core-chat")
+include(":core-vision")
 
 // Android-модули подключаются, только если найден Android SDK (Android Studio создаёт local.properties).
 val hasAndroidSdk = file("local.properties").exists() ||

@@ -122,9 +122,9 @@ class ChatOrchestrator(
     @Volatile private var running: Job? = null
 
     /** Запуск в прикладном scope: генерация продолжается, даже если пользователь ушёл с экрана чата. */
-    fun startSend(conversationId: Long, text: String, mode: ThinkingMode) {
+    fun startSend(conversationId: Long, text: String, mode: ThinkingMode, attachment: Attachment? = null) {
         if (busy.isLocked) return
-        running = scope.launch { send(conversationId, text, mode) }
+        running = scope.launch { send(conversationId, text, mode, attachment) }
     }
 
     fun startRegenerate(conversationId: Long, mode: ThinkingMode) {
@@ -149,15 +149,20 @@ class ChatOrchestrator(
         }
     }
 
-    suspend fun send(conversationId: Long, text: String, mode: ThinkingMode) {
-        val clean = text.trim()
+    suspend fun send(conversationId: Long, text: String, mode: ThinkingMode, attachment: Attachment? = null) {
+        val clean = text.trim().ifEmpty { if (attachment != null) DEFAULT_PHOTO_QUESTION else "" }
         if (clean.isEmpty() || !busy.tryLock()) return
         try {
             if (repo.getMessages(conversationId).isEmpty()) {
                 val conv = repo.getConversation(conversationId)
                 if (conv != null && conv.title == DEFAULT_TITLE) repo.renameConversation(conversationId, titleFrom(clean))
             }
-            repo.addMessage(StoredMessage(conversationId = conversationId, role = Role.USER, content = clean, createdAt = clock()))
+            repo.addMessage(
+                StoredMessage(
+                    conversationId = conversationId, role = Role.USER, content = clean, createdAt = clock(),
+                    attachmentKind = attachment?.kind, attachmentPath = attachment?.path, attachmentNote = attachment?.note,
+                ),
+            )
             reply(conversationId, mode)
         } finally {
             busy.unlock()
@@ -387,9 +392,18 @@ class ChatOrchestrator(
                 Role.ASSISTANT -> (m.status == MessageStatus.COMPLETE || m.status == MessageStatus.CANCELLED) && m.content.isNotBlank()
                 Role.SYSTEM -> false
             }
-            if (usable) turns.add(ChatTurn(m.role, m.content))
+            if (usable) turns.add(ChatTurn(m.role, withAttachment(m)))
         }
         return turns
+    }
+
+    /** Анализ снимка добавляется к вопросу пользователя вместе с честным ограничением: объекты модуль не распознаёт. */
+    private fun withAttachment(m: StoredMessage): String {
+        val note = m.attachmentNote
+        if (m.role != Role.USER || note.isNullOrBlank()) return m.content
+        return m.content + "\n\n[Вложение: изображение. Автоанализ встроенным модулем NØRVA Vision (технические характеристики кадра: " +
+            "цвета, свет, резкость, композиция; объекты он не распознаёт). Опирайся только на это описание, " +
+            "не выдумывай объекты, которых в нём нет. Описание: " + note + "]"
     }
 
     private fun titleFrom(text: String): String {
@@ -405,6 +419,7 @@ class ChatOrchestrator(
 
     companion object {
         const val DEFAULT_TITLE = "Новый чат"
+        const val DEFAULT_PHOTO_QUESTION = "Что на этом фото? Опиши и проанализируй."
         private const val POWER_CHECK_EVERY = 32
         private const val PROMPT_MARGIN = 16
         private const val MIN_ANSWER_TOKENS = 256

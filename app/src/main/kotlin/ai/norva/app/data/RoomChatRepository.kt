@@ -62,6 +62,9 @@ private fun MessageEntity.toModel() = StoredMessage(
     tokensPerSecond = tokensPerSecond,
     errorMessage = errorMessage,
     createdAt = createdAt,
+    attachmentKind = attachmentKind,
+    attachmentPath = attachmentPath,
+    attachmentNote = attachmentNote,
 )
 
 private fun StoredMessage.toEntity() = MessageEntity(
@@ -76,4 +79,7 @@ private fun StoredMessage.toEntity() = MessageEntity(
     tokensPerSecond = tokensPerSecond,
     errorMessage = errorMessage,
     createdAt = createdAt,
+    attachmentKind = attachmentKind,
+    attachmentPath = attachmentPath,
+    attachmentNote = attachmentNote,
 )

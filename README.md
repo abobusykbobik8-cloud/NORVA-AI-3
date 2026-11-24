@@ -9,6 +9,7 @@ Android-приложение (Kotlin, Compose) с локальным ИИ на l
 | `core-policy` | JVM | режимы Fast/Normal/Deep, каталог моделей, бюджет памяти, нагрев и батарея, маршрутизатор |
 | `core-inference` | JVM | ChatML, фильтр `<think>`, загрузчик с докачкой и SHA-256, контракт движка |
 | `core-chat` | JVM | оркестратор чата, установка моделей, интерфейс истории |
+| `core-vision` | JVM | собственные анализатор снимков и генератор картинок и видео (`docs/VISION_AND_MEDIA.md`) |
 | `engine-llama` | Android | JNI-мост и CMake для llama.cpp |
 | `app` | Android | Compose-интерфейс, Room, провайдеры памяти и нагрева |
 

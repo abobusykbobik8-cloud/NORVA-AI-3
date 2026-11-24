@@ -22,7 +22,14 @@ data class StoredMessage(
     val tokensPerSecond: Double? = null,
     val errorMessage: String? = null,
     val createdAt: Long,
+    /** PHOTO (снимок пользователя), IMAGE или VIDEO (созданы встроенным генератором). */
+    val attachmentKind: String? = null,
+    val attachmentPath: String? = null,
+    /** Текстовый анализ снимка модулем NØRVA Vision: не показывается в чате, но передаётся чат-модели. */
+    val attachmentNote: String? = null,
 )
+
+data class Attachment(val kind: String, val path: String, val note: String)
 
 /** История - единственный источник правды. Реализация на Room лежит в :app, тестовая - в тестах. */
 interface ChatRepository {

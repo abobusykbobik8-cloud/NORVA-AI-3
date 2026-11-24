@@ -13,8 +13,8 @@ android {
         applicationId = "ai.norva.mobile"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1-beta"
+        versionCode = 3
+        versionName = "1.2-beta"
         ndk { abiFilters += "arm64-v8a" }
     }
     buildFeatures { compose = true }
@@ -28,6 +28,7 @@ android {
 
 dependencies {
     implementation(project(":core-chat"))
+    implementation(project(":core-vision"))
     implementation(project(":engine-llama"))
 
     implementation(platform(libs.androidx.compose.bom))

@@ -229,6 +229,21 @@ class ChatOrchestratorTest {
         assertFalse(env.engine.requests.single().prompt.contains("битый ответ"))
     }
 
+    @Test fun photoAnalysisIsPassedToTheModelButNotShownAsText() = runTest {
+        val env = Env(this)
+        val c = env.newChat()
+        env.engine.script(text("ok"), finished())
+        env.orchestrator.send(c, "", ThinkingMode.NORMAL, Attachment("PHOTO", "/x.jpg", "Кадр 64×64, красный"))
+
+        val user = env.repo.getMessages(c).first()
+        assertEquals("PHOTO", user.attachmentKind)
+        assertEquals(ChatOrchestrator.DEFAULT_PHOTO_QUESTION, user.content)
+        assertFalse(user.content.contains("Кадр"))
+        val prompt = env.engine.requests.single().prompt
+        assertTrue(prompt.contains("Кадр 64×64, красный"))
+        assertTrue(prompt.contains("не выдумывай"))
+    }
+
     @Test fun filterExposesThinkingState() {
         val f = ThinkingFilter(false)
         assertFalse(f.isThinking)

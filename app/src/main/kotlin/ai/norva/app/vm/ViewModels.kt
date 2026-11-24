@@ -1,6 +1,7 @@
 package ai.norva.app.vm
 
 import ai.norva.app.AppContainer
+import ai.norva.chat.Attachment
 import ai.norva.chat.ChatOrchestrator
 import ai.norva.chat.ChatRepository
 import ai.norva.chat.ChatStatus
@@ -12,6 +13,7 @@ import ai.norva.policy.DeviceMemory
 import ai.norva.policy.ModelSpec
 import ai.norva.policy.ThinkingMode
 import ai.norva.app.platform.SettingsStore
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -35,6 +37,8 @@ class ChatListViewModel(private val repo: ChatRepository) : ViewModel() {
         viewModelScope.launch { repo.deleteConversation(id) }
     }
 }
+
+class PendingPhoto(val path: String, val note: String)
 
 class ChatViewModel(private val conversationId: Long, private val container: AppContainer) : ViewModel() {
     val messages: StateFlow<List<StoredMessage>> =
@@ -61,7 +65,53 @@ class ChatViewModel(private val conversationId: Long, private val container: App
         container.settings.mode = mode
     }
 
-    fun send(text: String) = container.orchestrator.startSend(conversationId, text, _mode.value)
+    private val _pending = MutableStateFlow<PendingPhoto?>(null)
+    val pending: StateFlow<PendingPhoto?> = _pending.asStateFlow()
+    val mediaBusy: StateFlow<String?> = container.media.busy
+    private val _notice = MutableStateFlow<String?>(null)
+    val notice: StateFlow<String?> = _notice.asStateFlow()
+
+    fun clearNotice() {
+        _notice.value = null
+    }
+
+    /** Снимок с камеры или из галереи: уменьшается, анализируется NØRVA Vision и ждёт отправки вместе с вопросом. */
+    fun importPhoto(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val r = container.media.importPhoto(uri)
+                _pending.value = PendingPhoto(r.path, r.note)
+            } catch (e: Exception) {
+                _notice.value = "Не удалось открыть фото: ${e.message}"
+            }
+        }
+    }
+
+    fun clearPending() {
+        _pending.value = null
+    }
+
+    fun send(text: String) {
+        val p = _pending.value
+        _pending.value = null
+        container.orchestrator.startSend(conversationId, text, _mode.value, p?.let { Attachment("PHOTO", it.path, it.note) })
+    }
+
+    fun generateImage(prompt: String) {
+        container.appScope.launch { container.media.generateImage(conversationId, prompt) }
+    }
+
+    fun generateVideo(prompt: String) {
+        container.appScope.launch { container.media.generateVideo(conversationId, prompt) }
+    }
+
+    fun save(m: StoredMessage) {
+        val path = m.attachmentPath ?: return
+        viewModelScope.launch {
+            val ok = container.media.saveToGallery(path, m.attachmentKind ?: "IMAGE")
+            _notice.value = if (ok) "Сохранено в галерею, папка NORVA" else "Не удалось сохранить"
+        }
+    }
     fun regenerate() = container.orchestrator.startRegenerate(conversationId, _mode.value)
     fun stop() = container.orchestrator.stop()
 }

@@ -21,7 +21,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.10.2"
-      - run: gradle :core-policy:test :core-inference:test :core-chat:test --stacktrace
+      - run: gradle :core-policy:test :core-inference:test :core-chat:test :core-vision:test --stacktrace
       - if: always()
         uses: actions/upload-artifact@v7
         with:
