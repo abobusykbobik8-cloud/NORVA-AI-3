@@ -9,7 +9,11 @@ import ai.norva.chat.StoredMessage
 import ai.norva.inference.Role
 import ai.norva.policy.ThinkingMode
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -89,15 +93,12 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onBack: () -> Unit
                     statusLine(status)?.let {
                         Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ThinkingMode.entries.forEach { m ->
-                            FilterChip(
-                                selected = m == mode,
-                                onClick = { vm.setMode(m) },
-                                label = { Text(modeTitle(m)) },
-                            )
-                        }
-                    }
+                    ModeSelector(
+                        selected = ThinkingMode.entries.indexOf(mode),
+                        labels = ThinkingMode.entries.map { modeTitle(it) },
+                        onSelect = { vm.setMode(ThinkingMode.entries[it]) },
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
                     Row(verticalAlignment = Alignment.Bottom) {
                         OutlinedTextField(
                             value = input,
@@ -108,16 +109,18 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onBack: () -> Unit
                         )
                         Spacer(Modifier.width(8.dp))
                         if (busy) {
-                            Button(onClick = { vm.stop() }) { Text("Стоп") }
+                            RacingButton(onClick = { vm.stop() }) {
+                                Text("Стоп", fontWeight = FontWeight.Bold, color = Color.White)
+                            }
                         } else {
-                            IconButton(
+                            RacingButton(
                                 onClick = {
                                     vm.send(input)
                                     input = ""
                                 },
                                 enabled = input.isNotBlank() && modelReady,
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Отправить")
+                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Отправить", tint = Color.White)
                             }
                         }
                     }
@@ -140,11 +143,13 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onBack: () -> Unit
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(messages, key = { it.id }) { m ->
-                        MessageBubble(
-                            m = m,
-                            canRegenerate = !busy && m.id == last?.id && m.role == Role.ASSISTANT,
-                            onRegenerate = { vm.regenerate() },
-                        )
+                        Box(Modifier.animateItem()) {
+                            MessageBubble(
+                                m = m,
+                                canRegenerate = !busy && m.id == last?.id && m.role == Role.ASSISTANT,
+                                onRegenerate = { vm.regenerate() },
+                            )
+                        }
                     }
                 }
             }
@@ -169,14 +174,14 @@ private fun MessageBubble(m: StoredMessage, canRegenerate: Boolean, onRegenerate
     val isUser = m.role == Role.USER
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
         GlassPanel(Modifier.widthIn(max = 340.dp), tint = if (isUser) NorvaBlue else Color.White) {
-            Column(Modifier.padding(12.dp)) {
+            Column(Modifier.padding(14.dp).animateContentSize()) {
                 if (m.thinking.isNotBlank()) {
                     ThinkingBlock(text = m.thinking, live = m.status == MessageStatus.STREAMING && m.content.isEmpty())
                 }
                 if (m.content.isNotEmpty()) {
                     SelectionContainer { Text(m.content) }
                 } else if (m.status == MessageStatus.STREAMING && m.thinking.isBlank()) {
-                    Text("…")
+                    TypingDots()
                 }
             }
         }
@@ -187,8 +192,9 @@ private fun MessageBubble(m: StoredMessage, canRegenerate: Boolean, onRegenerate
         if (!isUser && tps != null && tps > 0) {
             Text(
                 "%.1f ток/с".format(tps),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = NorvaYellow,
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
@@ -211,7 +217,7 @@ private fun ThinkingBlock(text: String, live: Boolean) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.clickable { open = !open }.padding(vertical = 4.dp),
         )
-        if (open) {
+        AnimatedVisibility(visible = open) {
             Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

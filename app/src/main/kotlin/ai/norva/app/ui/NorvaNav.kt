@@ -1,6 +1,11 @@
 package ai.norva.app.ui
 
 import ai.norva.app.AppContainer
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -11,7 +16,14 @@ import androidx.navigation.navArgument
 @Composable
 fun NorvaNav(container: AppContainer) {
     val nav = rememberNavController()
-    NavHost(navController = nav, startDestination = "chats") {
+    NavHost(
+        navController = nav,
+        startDestination = "chats",
+        enterTransition = { slideInHorizontally(tween(320)) { it / 5 } + fadeIn(tween(320)) },
+        exitTransition = { slideOutHorizontally(tween(320)) { -it / 8 } + fadeOut(tween(200)) },
+        popEnterTransition = { slideInHorizontally(tween(320)) { -it / 8 } + fadeIn(tween(320)) },
+        popExitTransition = { slideOutHorizontally(tween(320)) { it / 5 } + fadeOut(tween(200)) },
+    ) {
         composable("chats") {
             ChatListScreen(
                 container = container,

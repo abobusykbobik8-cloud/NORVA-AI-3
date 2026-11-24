@@ -128,7 +128,7 @@ private fun ModelCard(
                 }
                 is InstallState.Downloading -> {
                     val fraction = if (state.totalBytes > 0) state.downloadedBytes.toFloat() / state.totalBytes else 0f
-                    LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                    RacingProgress(fraction)
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text(
                             "${state.downloadedBytes / 1_000_000} / ${state.totalBytes / 1_000_000} МБ · " +
