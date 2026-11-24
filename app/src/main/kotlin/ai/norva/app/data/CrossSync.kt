@@ -4,7 +4,6 @@ import ai.norva.app.platform.SettingsStore
 import ai.norva.inference.SyncCipher
 import ai.norva.policy.ThinkingMode
 import androidx.room.withTransaction
-import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -23,7 +22,7 @@ class CrossSync(private val db: NorvaDatabase, private val settings: SettingsSto
         val chats = db.withTransaction {
             val records = JSONArray()
             var chars = 0L
-            for (chat in dao.observeConversations().first()) {
+            for (chat in dao.snapshotConversations()) {
                 val turns = JSONArray()
                 for (m in dao.getMessages(chat.id)) {
                     if (m.status != "COMPLETE" || m.content.isBlank()) continue

@@ -64,6 +64,9 @@ interface ChatDao {
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC")
     fun observeConversations(): Flow<List<ConversationEntity>>
 
+    @Query("SELECT * FROM conversations ORDER BY updatedAt DESC")
+    suspend fun snapshotConversations(): List<ConversationEntity>
+
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, id ASC")
     fun observeMessages(conversationId: Long): Flow<List<MessageEntity>>
 

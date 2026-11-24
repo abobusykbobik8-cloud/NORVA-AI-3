@@ -158,7 +158,7 @@ fun LiveDialog(messages: List<StoredMessage>, send: (String) -> Boolean, stop: (
     AlertDialog(onDismissRequest = dismiss, title = { Text("NØRVA Live") }, text = { Column {
         Text(session.status)
         if (session.transcript.isNotBlank()) Text(session.transcript)
-        Text("При отсутствии локального распознавателя системный голосовой сервис может использовать сеть.", style=MaterialTheme.typography.bodySmall)
+        Text("Распознавание и озвучивание используют службы Android. Если локальный пакет языка недоступен, голосовой сервис может использовать сеть.", style=MaterialTheme.typography.bodySmall)
     } }, confirmButton = { TextButton(enabled=session.ready, onClick = {
         session.after = latest
         if (ContextCompat.checkSelfPermission(ctx,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) session.listen()

@@ -16,6 +16,12 @@ class MemoryAndSelectorTest {
     private val m4 = DefaultCatalog.byId("qwen3.5-4b-q4km")!!
     private val m9 = DefaultCatalog.byId("qwen3.5-9b-q4km")!!
 
+    @Test fun turboPrefersSmallestInstalledModel() {
+        val lite = DefaultCatalog.models.first { it.tier == ModelTier.LITE }
+        val profile = ModeProfiles.of(ThinkingMode.NORMAL)
+        assertEquals(lite.id, LocalModelSelector.select(profile,4*GIB,setOf(m4.id,lite.id),preferSmaller=true)?.model?.id)
+    }
+
     @Test fun hardCapAppliesWhenMuchMemoryIsFree() {
         assertEquals((total * 0.40).toLong(), MemoryBudget.budgetBytes(mem(10)))
     }
