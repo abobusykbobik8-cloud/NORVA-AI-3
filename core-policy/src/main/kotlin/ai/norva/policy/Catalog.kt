@@ -79,7 +79,7 @@ object MediaCatalog {
         "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf", 1_566_768_416L, "CreativeML Open RAIL-M")
     val video = listOf(
         asset("wan21-vace-q4", "Видео · Wan 2.1 VACE 1.3B", "calcuis/wan-1.3b-gguf",
-            "wan2.1-vace-1.3b-q4_0.gguf", 1_345_134_272L),
+            "wan2.1-v3-vace-1.3b-q4_0.gguf", 1_346_314_016L),
         asset("umt5-q3", "Видео · текстовый энкодер UMT5", "city96/umt5-xxl-encoder-gguf",
             "umt5-xxl-encoder-Q3_K_S.gguf", 2_858_489_696L),
         asset("wan21-vae", "Видео · декодер Wan VAE", "Comfy-Org/Wan_2.1_ComfyUI_repackaged",

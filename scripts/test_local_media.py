@@ -12,7 +12,7 @@ work = pathlib.Path(sys.argv[2]).resolve()
 work.mkdir(parents=True, exist_ok=True)
 assets = [
     ("second-state/stable-diffusion-v1-5-GGUF", "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf", "b8944e9fe0b69b36ae1b5bb0185b3a7b8ef14347fe0fa9af6c64c4829022261f"),
-    ("calcuis/wan-1.3b-gguf", "wan2.1-vace-1.3b-q4_0.gguf", "985b0adb23a32dd7c0ed008d22754a38cb7b3f076fb1014586f30d74134e8556"),
+    ("calcuis/wan-1.3b-gguf", "wan2.1-v3-vace-1.3b-q4_0.gguf", "c9d2ad33427cef0e485c0c32b105c3cca8a33f6bfd8249b41b9685756aed4a74"),
     ("city96/umt5-xxl-encoder-gguf", "umt5-xxl-encoder-Q3_K_S.gguf", "f64f8d6dc4d8a24276df69d0ccea789aae686f7417950a41e6568c30cb478a5c"),
     ("Comfy-Org/Wan_2.1_ComfyUI_repackaged", "split_files/vae/wan_2.1_vae.safetensors", "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b"),
 ]
