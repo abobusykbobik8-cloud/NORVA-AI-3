@@ -19,6 +19,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -31,6 +32,9 @@ class MediaStudio(
     private val repo: ChatRepository,
     private val dir: File,
     private val cloud: ai.norva.app.cloud.CloudApi,
+    private val diffusion: LocalDiffusion,
+    private val orchestrator: ai.norva.chat.ChatOrchestrator,
+    private val scope: kotlinx.coroutines.CoroutineScope,
 ) {
     private val _busy = MutableStateFlow<String?>(null)
     val busy: StateFlow<String?> = _busy.asStateFlow()
@@ -83,6 +87,27 @@ class MediaStudio(
             if (video) "Видео · Wan" else "Изображение · FLUX", if (video) "Видео Wan" else "Изображение FLUX") { file ->
             cloud.generate(video, prompt, photo, file) { _busy.value = it }
         }
+
+    private var localJob: kotlinx.coroutines.Job? = null
+    val localRunning = MutableStateFlow(false)
+
+    @Synchronized fun startLocal(id: Long, prompt: String, video: Boolean, photo: String? = null): Boolean {
+        if (localJob?.isActive == true || busy.value != null) return false
+        localRunning.value = true
+        localJob = scope.launch {
+            try {
+                val label = if (video) "Локальное видео · Wan 2.1" else "Локальное изображение · SD 1.5"
+                produce(id, prompt, if (video) "VIDEO" else "IMAGE", if (video) "mp4" else "png", label, label) { file ->
+                    orchestrator.withLocalEngine {
+                        diffusion.generate(prompt, video, photo, file) { _busy.value = it }
+                    }
+                }
+            } finally { localRunning.value = false }
+        }
+        return true
+    }
+
+    fun stopLocal() { localJob?.cancel() }
 
     private suspend fun produce(
         conversationId: Long,

@@ -65,7 +65,26 @@ object DefaultCatalog {
             },
             supportsThinking = false)
     }
-    val downloads = models.filter { !it.experimental } + projectors.values
+    val downloads = models.filter { !it.experimental } + projectors.values + MediaCatalog.all
 
     fun byId(id: String): ModelSpec? = models.firstOrNull { it.id == id }
+}
+
+/** Media assets share the verified downloader but are never offered to llama.cpp. */
+object MediaCatalog {
+    private fun asset(id: String, title: String, repo: String, file: String, bytes: Long, license: String = "Apache-2.0") =
+        ModelSpec(id, title, ModelTier.SMALL, repo, file, bytes, 0L, license, false, false, false, true)
+
+    val picture = asset("sd15-q4", "Картинки · Stable Diffusion 1.5", "second-state/stable-diffusion-v1-5-GGUF",
+        "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf", 1_566_768_416L, "CreativeML Open RAIL-M")
+    val video = listOf(
+        asset("wan21-vace-q4", "Видео · Wan 2.1 VACE 1.3B", "calcuis/wan-1.3b-gguf",
+            "wan2.1-vace-1.3b-q4_0.gguf", 1_345_134_272L),
+        asset("umt5-q3", "Видео · текстовый энкодер UMT5", "city96/umt5-xxl-encoder-gguf",
+            "umt5-xxl-encoder-Q3_K_S.gguf", 2_858_489_696L),
+        asset("wan21-vae", "Видео · декодер Wan VAE", "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+            "split_files/vae/wan_2.1_vae.safetensors", 253_815_318L),
+    )
+    val all = listOf(picture) + video
+    fun required(isVideo: Boolean) = if (isVideo) video else listOf(picture)
 }

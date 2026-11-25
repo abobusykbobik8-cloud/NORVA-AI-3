@@ -65,6 +65,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.10.2"
+      - run: sh scripts/fetch_diffusion.sh
       - name: Сборка debug APK
         run: gradle :app:assembleDebug --stacktrace
       - name: Контрольная сумма APK
@@ -79,7 +80,7 @@ jobs:
           retention-days: 30
 
   device-check:
-    if: github.ref == 'refs/heads/release/1.4-beta'
+    if: github.ref == 'refs/heads/release/1.4-beta' || github.ref == 'refs/heads/feature/offline-media'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -96,6 +97,7 @@ jobs:
         run: |
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1" "emulator" "system-images;android-35;google_apis;x86_64"
           sh scripts/fetch_llama.sh
+          sh scripts/fetch_diffusion.sh
       - name: Run on an Android 15 emulator
         run: |
           set -euo pipefail
@@ -112,3 +114,29 @@ jobs:
           name: android-device-test-reports
           path: app/build/reports/androidTests/
           if-no-files-found: ignore
+
+  local-media-models:
+    if: github.ref == 'refs/heads/feature/offline-media' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+      - run: sh scripts/fetch_diffusion.sh
+      - name: Build the same CPU renderer for the test host
+        run: |
+          cmake -S app/src/main/diffusion -B build/test-renderer -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON -DNORVA_BIN_DIR="$RUNNER_TEMP/bin"
+          cmake --build build/test-renderer --target norva_media --parallel 2
+      - name: Generate image, text-to-video and reference-conditioned video with verified weights
+        run: |
+          python3 -m venv "$RUNNER_TEMP/test-python"
+          "$RUNNER_TEMP/test-python/bin/pip" install pillow
+          "$RUNNER_TEMP/test-python/bin/python" scripts/test_local_media.py "$RUNNER_TEMP/bin/libnorva_diffusion.so" "$RUNNER_TEMP/media"
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: diffusion-samples
+          path: |
+            ${{ runner.temp }}/media/*.png
+            ${{ runner.temp }}/media/*.gif
+          if-no-files-found: ignore
+          retention-days: 7

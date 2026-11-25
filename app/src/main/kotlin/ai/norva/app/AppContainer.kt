@@ -35,7 +35,6 @@ class AppContainer(context: Context) {
     val personal = ai.norva.app.platform.PersonalMemory(app)
     val sync = ai.norva.app.data.CrossSync(db, settings)
     val cloud = ai.norva.app.cloud.CloudApi(app)
-    val media = MediaStudio(app, repo, File(app.filesDir, "media"), cloud)
     val modelStore = ModelStore(File(app.filesDir, "models"))
     val engine = LlamaEngine()
     val memory = AndroidMemoryInfoProvider(app)
@@ -67,4 +66,7 @@ class AppContainer(context: Context) {
         remoteChat = cloud::chat,
         systemPrompt = { settings.systemPrompt },
     )
+
+    val localDiffusion = ai.norva.app.media.LocalDiffusion(app, modelStore, memory, power)
+    val media = MediaStudio(app, repo, File(app.filesDir, "media"), cloud, localDiffusion, orchestrator, appScope)
 }

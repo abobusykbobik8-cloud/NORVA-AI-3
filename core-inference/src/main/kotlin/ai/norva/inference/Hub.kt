@@ -37,7 +37,9 @@ class HfHub(
     private val sha256Regex = Regex("^[0-9a-fA-F]{64}$")
 
     fun resolve(repo: String, fileName: String): RemoteFile {
-        val body = http.getText("$baseUrl/api/models/$repo/tree/main")
+        val directory = fileName.substringBeforeLast('/', "")
+        val tree = if (directory.isEmpty()) "main" else "main/$directory"
+        val body = http.getText("$baseUrl/api/models/$repo/tree/$tree")
         val entries = try {
             json.decodeFromString(ListSerializer(TreeEntry.serializer()), body)
         } catch (e: SerializationException) {

@@ -5,6 +5,8 @@ Android-приложение (Kotlin, Compose) с локальным ИИ на l
 
 Функции беты, установка APK и обмен чатами с ПК описаны в [заметках к версии 1.4](docs/RELEASE-1.4-beta.md).
 
+[Локальные изображения и видео, загрузка весов и сборка](docs/LOCAL_MEDIA.md).
+
 ## Модули
 | Модуль | Тип | Назначение |
 |---|---|---|
@@ -18,6 +20,6 @@ Android-приложение (Kotlin, Compose) с локальным ИИ на l
 ## Сборка
 Подробно: `docs/BUILD_AND_INSTALL.md`. Кратко:
 - **Без локальной среды:** загрузите проект в GitHub, запустите workflow `ci`, скачайте артефакт `norva-ai-debug-apk` из job `android-apk`.
-- **Локально:** `sh scripts/fetch_llama.sh`, затем `gradle :app:assembleDebug` (JDK 17, Android SDK 35, NDK 27.2.12479018, CMake 3.22.1).
+- **Локально:** `sh scripts/fetch_llama.sh && sh scripts/fetch_diffusion.sh`, затем `gradle :app:assembleDebug` (JDK 17, Android SDK 35, NDK 27.2.12479018, CMake 3.22.1).
 
 Версия llama.cpp закреплена в `llama.cpp.version` (сейчас `b12591`).

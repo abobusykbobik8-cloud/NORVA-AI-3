@@ -107,6 +107,7 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onOpenChat: (Long)
     val busy = status !is ChatStatus.Idle
     val pending by vm.pending.collectAsStateWithLifecycle()
     val mediaBusy by vm.mediaBusy.collectAsStateWithLifecycle()
+    val localRendering by container.media.localRunning.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var menuOpen by remember { mutableStateOf(false) }
@@ -214,6 +215,12 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onOpenChat: (Long)
                                     Icon(Icons.Default.Add, contentDescription = "Добавить")
                                 }
                                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                    DropdownMenuItem(text = { Text("Локально · изображение SD 1.5") },
+                                        enabled = input.isNotBlank() && pending == null,
+                                        onClick = { menuOpen = false; if (container.media.startLocal(conversationId, input, false)) input = "" })
+                                    DropdownMenuItem(text = { Text(if (pending == null) "Локально · видео Wan 2.1" else "Локально · видео по фото") },
+                                        enabled = input.isNotBlank(),
+                                        onClick = { menuOpen = false; if (container.media.startLocal(conversationId, input, true, pending?.path)) { input = ""; vm.clearPending() } })
                                     DropdownMenuItem(text = { Text("Облако · изображение FLUX") },
                                         enabled = input.isNotBlank() && cloud.mediaKey.isNotBlank(),
                                         onClick = { menuOpen = false; vm.neural(input, false) })
@@ -269,12 +276,12 @@ fun ChatScreen(container: AppContainer, conversationId: Long, onOpenChat: (Long)
                                     field()
                                 } })
                             val canSend = (input.isNotBlank() || pending != null) && modelReady && mediaBusy == null
-                            IconButton(enabled = busy || canSend, onClick = {
-                                if (busy) vm.stop() else if (vm.send(input)) input = ""
+                            IconButton(enabled = localRendering || busy || canSend, onClick = {
+                                if (localRendering) container.media.stopLocal() else if (busy) vm.stop() else if (vm.send(input)) input = ""
                             }) {
-                                Box(Modifier.size(36.dp).background(if (busy || canSend) NorvaBlue else MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                                Box(Modifier.size(36.dp).background(if (localRendering || busy || canSend) NorvaBlue else MaterialTheme.colorScheme.surfaceVariant, CircleShape),
                                     contentAlignment = Alignment.Center) {
-                                    if (busy) Box(Modifier.size(12.dp).background(Color.White, RoundedCornerShape(2.dp))
+                                    if (localRendering || busy) Box(Modifier.size(12.dp).background(Color.White, RoundedCornerShape(2.dp))
                                         .semantics { contentDescription = "Стоп" })
                                     else Icon(Icons.AutoMirrored.Filled.Send, "Отправить", Modifier.size(19.dp), tint = Color.White)
                                 }

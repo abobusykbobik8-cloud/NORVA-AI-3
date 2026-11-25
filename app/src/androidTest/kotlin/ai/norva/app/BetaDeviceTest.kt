@@ -22,6 +22,33 @@ class BetaDeviceTest {
     @get:Rule val compose = createComposeRule()
     private val ctx get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun packagedRendererAndAndroidMediaEncoder() = runBlocking {
+        val app = ctx.applicationContext as NorvaApp
+        val exe = java.io.File(ctx.applicationInfo.nativeLibraryDir, "libnorva_diffusion.so")
+        val process = ProcessBuilder(exe.path).start()
+        assertEquals(2, process.waitFor())
+        val raw = java.io.File.createTempFile("encoder-test", ".rgb", ctx.cacheDir)
+        val file = java.io.File.createTempFile("encoder-test", ".mp4", ctx.cacheDir)
+        try {
+            raw.outputStream().buffered().use { out ->
+                repeat(9) { i -> out.write(ByteArray(256*256*3) { (it+i*10).toByte() }) }
+            }
+            app.container.localDiffusion.encodeFrames(raw, true, file)
+            val extractor = android.media.MediaExtractor()
+            try {
+                extractor.setDataSource(file.path)
+                val format = extractor.getTrackFormat(0)
+                assertEquals("video/avc", format.getString(android.media.MediaFormat.KEY_MIME))
+                assertEquals(256, format.getInteger(android.media.MediaFormat.KEY_WIDTH))
+                extractor.selectTrack(0)
+                var count = 0
+                while (extractor.sampleTime >= 0) { count++; extractor.advance() }
+                assertEquals(9, count)
+            } finally { extractor.release() }
+        } finally { raw.delete(); file.delete() }
+        Unit
+    }
+
     @Test fun memoryIsPersistentEncryptedAndRemovable() {
         val note = "device test " + System.nanoTime()
         val memory = PersonalMemory(ctx)

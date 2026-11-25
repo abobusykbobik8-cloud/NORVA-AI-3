@@ -18,10 +18,12 @@ android {
         minSdk = 29
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 6
-        versionName = "1.4-beta"
+        versionCode = 7
+        versionName = "1.4-beta-local"
         ndk { abiFilters += if (providers.gradleProperty("norva.emulator").orNull == "true") "x86_64" else "arm64-v8a" }
     }
+    packaging { jniLibs.useLegacyPackaging = true }
+    sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("generated/diffusion"))
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -56,3 +58,28 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 }
+
+// SDK-managed CMake builds the CPU renderer as an independent PIE executable.
+// Its private ggml and C++ runtime cannot collide with the chat JNI library.
+val diffAbi = if (providers.gradleProperty("norva.emulator").orNull == "true") "x86_64" else "arm64-v8a"
+val nativeRoot = layout.buildDirectory.dir("diffusion/$diffAbi")
+val mediaBin = layout.buildDirectory.dir("generated/diffusion/$diffAbi")
+val toolExt = if (System.getProperty("os.name").startsWith("Windows")) ".exe" else ""
+val cmakeBin = android.sdkDirectory.resolve("cmake/3.22.1/bin")
+val prepareMedia = tasks.register<Exec>("configureMediaRenderer") {
+    inputs.files(file("src/main/diffusion/CMakeLists.txt"), rootProject.file("third_party/stable-diffusion.cpp/.norva-revision"))
+    outputs.file(nativeRoot.map { it.file("build.ninja") })
+    commandLine(cmakeBin.resolve("cmake$toolExt"), "-S", file("src/main/diffusion"), "-B", nativeRoot.get().asFile,
+        "-G", "Ninja", "-DCMAKE_MAKE_PROGRAM=" + cmakeBin.resolve("ninja$toolExt"),
+        "-DCMAKE_TOOLCHAIN_FILE=" + android.sdkDirectory.resolve("ndk/${android.ndkVersion}/build/cmake/android.toolchain.cmake"),
+        "-DANDROID_ABI=$diffAbi", "-DANDROID_PLATFORM=android-29", "-DANDROID_STL=c++_static",
+        "-DCMAKE_BUILD_TYPE=Release", "-DNORVA_BIN_DIR=" + mediaBin.get().asFile)
+}
+val buildMedia = tasks.register<Exec>("buildMediaRenderer") {
+    dependsOn(prepareMedia)
+    inputs.dir(file("src/main/diffusion"))
+    inputs.file(rootProject.file("third_party/stable-diffusion.cpp/.norva-revision"))
+    outputs.file(mediaBin.map { it.file("libnorva_diffusion.so") })
+    commandLine(cmakeBin.resolve("cmake$toolExt"), "--build", nativeRoot.get().asFile, "--target", "norva_media", "--parallel", "2")
+}
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }.configureEach { dependsOn(buildMedia) }
