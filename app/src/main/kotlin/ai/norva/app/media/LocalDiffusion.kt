@@ -95,9 +95,9 @@ class LocalDiffusion(
         val packed = ByteArray(side * side * 3)
         require(raw.length() == packed.size.toLong() * count) { "Движок вернул неполный набор кадров" }
         val pixels = IntArray(side * side)
-        val bitmap = Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888)
+        val bitmap = if (video) null else Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888)
         try {
-            val writer = if (video) Mp4Writer(output, side, side, 6) else null
+            val writer = if (video) Mp4Writer(output, side, side, 6, exactFrames = true) else null
             try {
                 writer?.start()
                 DataInputStream(raw.inputStream().buffered()).use { input ->
@@ -111,9 +111,12 @@ class LocalDiffusion(
                             val b = packed[p++].toInt() and 255
                             pixels[i] = (255 shl 24) or (r shl 16) or (g shl 8) or b
                         }
-                        bitmap.setPixels(pixels, 0, side, 0, 0, side, side)
-                        if (writer != null) writer.writeFrame(bitmap)
-                        else output.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+                        if (writer != null) writer.writePixels(pixels)
+                        else {
+                            val image = checkNotNull(bitmap)
+                            image.setPixels(pixels, 0, side, 0, 0, side, side)
+                            output.outputStream().use { check(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+                        }
                     }
                 }
                 writer?.finish()
@@ -123,7 +126,7 @@ class LocalDiffusion(
                 throw e
             }
         } finally {
-            bitmap.recycle()
+            bitmap?.recycle()
         }
     }
 }
